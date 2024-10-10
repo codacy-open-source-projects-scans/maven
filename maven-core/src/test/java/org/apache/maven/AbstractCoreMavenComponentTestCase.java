@@ -21,6 +21,7 @@ package org.apache.maven;
 import javax.inject.Inject;
 
 import java.io.File;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -39,6 +40,7 @@ import org.apache.maven.internal.impl.DefaultLookup;
 import org.apache.maven.internal.impl.DefaultSessionFactory;
 import org.apache.maven.internal.impl.InternalMavenSession;
 import org.apache.maven.internal.impl.InternalSession;
+import org.apache.maven.internal.impl.resolver.MavenSessionBuilderSupplier;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Exclusion;
@@ -49,7 +51,6 @@ import org.apache.maven.model.RepositoryPolicy;
 import org.apache.maven.project.DefaultProjectBuildingRequest;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.ProjectBuildingRequest;
-import org.apache.maven.repository.internal.MavenSessionBuilderSupplier;
 import org.apache.maven.session.scope.internal.SessionScope;
 import org.codehaus.plexus.PlexusContainer;
 import org.codehaus.plexus.testing.PlexusTest;
@@ -90,7 +91,8 @@ public abstract class AbstractCoreMavenComponentTestCase {
 
     protected MavenExecutionRequest createMavenExecutionRequest(File pom) throws Exception {
         MavenExecutionRequest request = new DefaultMavenExecutionRequest()
-                .setRootDirectory(pom != null ? pom.toPath().getParent() : null)
+                .setRootDirectory(
+                        pom != null ? pom.toPath().getParent() : Paths.get("").toAbsolutePath())
                 .setPom(pom)
                 .setProjectPresent(true)
                 .setShowErrors(true)

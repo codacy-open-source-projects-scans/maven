@@ -34,7 +34,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,6 +41,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
@@ -71,6 +71,8 @@ import org.apache.maven.api.model.Profile;
 import org.apache.maven.api.model.Repository;
 import org.apache.maven.api.services.BuilderProblem;
 import org.apache.maven.api.services.BuilderProblem.Severity;
+import org.apache.maven.api.services.Interpolator;
+import org.apache.maven.api.services.InterpolatorException;
 import org.apache.maven.api.services.MavenException;
 import org.apache.maven.api.services.ModelBuilder;
 import org.apache.maven.api.services.ModelBuilderException;
@@ -103,18 +105,12 @@ import org.apache.maven.api.services.model.PluginManagementInjector;
 import org.apache.maven.api.services.model.ProfileActivationContext;
 import org.apache.maven.api.services.model.ProfileInjector;
 import org.apache.maven.api.services.model.ProfileSelector;
-import org.apache.maven.api.services.model.RootLocator;
 import org.apache.maven.api.services.xml.XmlReaderException;
 import org.apache.maven.api.services.xml.XmlReaderRequest;
 import org.apache.maven.api.spi.ModelParserException;
 import org.apache.maven.api.spi.ModelTransformer;
 import org.apache.maven.internal.impl.util.PhasingExecutor;
 import org.apache.maven.model.v4.MavenTransformer;
-import org.codehaus.plexus.interpolation.InterpolationException;
-import org.codehaus.plexus.interpolation.Interpolator;
-import org.codehaus.plexus.interpolation.MapBasedValueSource;
-import org.codehaus.plexus.interpolation.RegexBasedInterpolator;
-import org.codehaus.plexus.interpolation.StringSearchInterpolator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -155,6 +151,7 @@ public class DefaultModelBuilder implements ModelBuilder {
     private final List<ModelTransformer> transformers;
     private final ModelCacheFactory modelCacheFactory;
     private final ModelResolver modelResolver;
+    private final Interpolator interpolator;
 
     @SuppressWarnings("checkstyle:ParameterNumber")
     @Inject
@@ -177,7 +174,8 @@ public class DefaultModelBuilder implements ModelBuilder {
             ModelVersionParser versionParser,
             List<ModelTransformer> transformers,
             ModelCacheFactory modelCacheFactory,
-            ModelResolver modelResolver) {
+            ModelResolver modelResolver,
+            Interpolator interpolator) {
         this.modelProcessor = modelProcessor;
         this.modelValidator = modelValidator;
         this.modelNormalizer = modelNormalizer;
@@ -197,6 +195,7 @@ public class DefaultModelBuilder implements ModelBuilder {
         this.transformers = transformers;
         this.modelCacheFactory = modelCacheFactory;
         this.modelResolver = modelResolver;
+        this.interpolator = interpolator;
     }
 
     public ModelBuilderSession newSession() {
@@ -341,7 +340,7 @@ public class DefaultModelBuilder implements ModelBuilder {
         }
 
         private int getParallelism() {
-            int parallelism = /*Runtime.getRuntime().availableProcessors() / 2 +*/ 1;
+            int parallelism = Runtime.getRuntime().availableProcessors() / 2 + 1;
             try {
                 String str = request.getUserProperties().get(Constants.MAVEN_MODEL_BUILDER_PARALLELISM);
                 if (str != null) {
@@ -632,12 +631,7 @@ public class DefaultModelBuilder implements ModelBuilder {
             top = top.toAbsolutePath().normalize();
 
             // Obtain the root directory, resolving it if necessary
-            Path rootDirectory;
-            try {
-                rootDirectory = session.getRootDirectory();
-            } catch (IllegalStateException e) {
-                rootDirectory = session.getService(RootLocator.class).findRoot(top);
-            }
+            Path rootDirectory = session.getRootDirectory();
 
             // Locate and normalize the root POM if it exists, fallback to top otherwise
             Path root = modelProcessor.locateExistingPom(rootDirectory);
@@ -834,6 +828,14 @@ public class DefaultModelBuilder implements ModelBuilder {
             }
 
             result.setEffectiveModel(resultModel);
+            // Set the default relative path for the parent in the file model
+            if (result.getFileModel().getParent() != null
+                    && result.getFileModel().getParent().getRelativePath() == null) {
+                result.setFileModel(result.getFileModel()
+                        .withParent(result.getFileModel()
+                                .getParent()
+                                .withRelativePath(resultModel.getParent().getRelativePath())));
+            }
 
             // effective model validation
             modelValidator.validateEffectiveModel(
@@ -854,10 +856,7 @@ public class DefaultModelBuilder implements ModelBuilder {
 
             Parent parent = childModel.getParent();
             if (parent != null) {
-                parentModel = readParentLocally(childModel);
-                if (parentModel == null) {
-                    parentModel = resolveAndReadParentExternally(childModel);
-                }
+                parentModel = resolveParent(childModel);
 
                 if (!"pom".equals(parentModel.getPackaging())) {
                     add(
@@ -882,43 +881,56 @@ public class DefaultModelBuilder implements ModelBuilder {
             return parentModel;
         }
 
+        private Model resolveParent(Model childModel) {
+            Model parentModel = null;
+            if (request.getRequestType() == ModelBuilderRequest.RequestType.BUILD_POM
+                    || request.getRequestType() == ModelBuilderRequest.RequestType.CONSUMER_POM) {
+                parentModel = readParentLocally(childModel);
+            }
+            if (parentModel == null) {
+                parentModel = resolveAndReadParentExternally(childModel);
+            }
+            return parentModel;
+        }
+
         private Model readParentLocally(Model childModel) throws ModelBuilderException {
-            ModelSource candidateSource = getParentPomFile(childModel, request.getSource());
+            ModelSource candidateSource = null;
+
+            Parent parent = childModel.getParent();
+            String parentPath = parent.getRelativePath();
+            if (parentPath != null && !parentPath.isEmpty()) {
+                candidateSource = request.getSource().resolve(modelProcessor::locateExistingPom, parentPath);
+                if (candidateSource == null) {
+                    wrongParentRelativePath(childModel);
+                    return null;
+                }
+            }
+            if (candidateSource == null) {
+                candidateSource = resolveReactorModel(parent.getGroupId(), parent.getArtifactId(), parent.getVersion());
+            }
+            if (candidateSource == null) {
+                candidateSource = request.getSource().resolve(modelProcessor::locateExistingPom, "..");
+            }
+
             if (candidateSource == null) {
                 return null;
             }
 
             Model candidateModel = derive(candidateSource).readAsParentModel();
 
-            //
-            // TODO jvz Why isn't all this checking the job of the duty of the workspace resolver, we know that we
-            // have a model that is suitable, yet more checks are done here and the one for the version is problematic
-            // before because with parents as ranges it will never work in this scenario.
-            //
-
             String groupId = getGroupId(candidateModel);
             String artifactId = candidateModel.getArtifactId();
+            String version = getVersion(candidateModel);
 
-            Parent parent = childModel.getParent();
+            // Ensure that relative path and GA match, if both are provided
             if (groupId == null
                     || !groupId.equals(parent.getGroupId())
                     || artifactId == null
                     || !artifactId.equals(parent.getArtifactId())) {
-                StringBuilder buffer = new StringBuilder(256);
-                buffer.append("'parent.relativePath'");
-                if (childModel != getRootModel()) {
-                    buffer.append(" of POM ").append(ModelProblemUtils.toSourceHint(childModel));
-                }
-                buffer.append(" points at ").append(groupId).append(':').append(artifactId);
-                buffer.append(" instead of ").append(parent.getGroupId()).append(':');
-                buffer.append(parent.getArtifactId()).append(", please verify your project structure");
-
-                setSource(childModel);
-                add(Severity.WARNING, Version.BASE, buffer.toString(), parent.getLocation(""));
+                mismatchRelativePathAndGA(childModel, groupId, artifactId);
                 return null;
             }
 
-            String version = getVersion(candidateModel);
             if (version != null && parent.getVersion() != null && !version.equals(parent.getVersion())) {
                 try {
                     VersionRange parentRange = versionParser.parseVersionRange(parent.getVersion());
@@ -951,13 +963,39 @@ public class DefaultModelBuilder implements ModelBuilder {
                     return null;
                 }
             }
-
-            //
-            // Here we just need to know that a version is fine to use but this validation we can do in our workspace
-            // resolver.
-            //
-
             return candidateModel;
+        }
+
+        private void mismatchRelativePathAndGA(Model childModel, String groupId, String artifactId) {
+            Parent parent = childModel.getParent();
+            StringBuilder buffer = new StringBuilder(256);
+            buffer.append("'parent.relativePath'");
+            if (childModel != getRootModel()) {
+                buffer.append(" of POM ").append(ModelProblemUtils.toSourceHint(childModel));
+            }
+            buffer.append(" points at ").append(groupId).append(':').append(artifactId);
+            buffer.append(" instead of ").append(parent.getGroupId()).append(':');
+            buffer.append(parent.getArtifactId()).append(", please verify your project structure");
+
+            setSource(childModel);
+            boolean warn = MODEL_VERSION_4_0_0.equals(childModel.getModelVersion())
+                    || childModel.getParent().getRelativePath() == null;
+            add(warn ? Severity.WARNING : Severity.FATAL, Version.BASE, buffer.toString(), parent.getLocation(""));
+        }
+
+        private void wrongParentRelativePath(Model childModel) {
+            Parent parent = childModel.getParent();
+            String parentPath = parent.getRelativePath();
+            StringBuilder buffer = new StringBuilder(256);
+            buffer.append("'parent.relativePath'");
+            if (childModel != getRootModel()) {
+                buffer.append(" of POM ").append(ModelProblemUtils.toSourceHint(childModel));
+            }
+            buffer.append(" points at '").append(parentPath);
+            buffer.append("' but no POM could be found, please verify your project structure");
+
+            setSource(childModel);
+            add(Severity.FATAL, Version.BASE, buffer.toString(), parent.getLocation(""));
         }
 
         Model resolveAndReadParentExternally(Model childModel) throws ModelBuilderException {
@@ -986,7 +1024,7 @@ public class DefaultModelBuilder implements ModelBuilder {
 
             ModelSource modelSource;
             try {
-                modelSource = resolveReactorModel(groupId, artifactId, version);
+                modelSource = resolveReactorModel(parent.getGroupId(), parent.getArtifactId(), parent.getVersion());
                 if (modelSource == null) {
                     AtomicReference<Parent> modified = new AtomicReference<>();
                     modelSource = modelResolver.resolveModel(request.getSession(), repositories, parent, modified);
@@ -1005,13 +1043,8 @@ public class DefaultModelBuilder implements ModelBuilder {
                     buffer.append(" for ").append(ModelProblemUtils.toId(childModel));
                 }
                 buffer.append(": ").append(e.getMessage());
-                if (childModel.getProjectDirectory() != null) {
-                    if (parent.getRelativePath() == null
-                            || parent.getRelativePath().isEmpty()) {
-                        buffer.append(" and 'parent.relativePath' points at no local POM");
-                    } else {
-                        buffer.append(" and 'parent.relativePath' points at wrong local POM");
-                    }
+                if (request.getRequestType() == ModelBuilderRequest.RequestType.BUILD_POM) {
+                    buffer.append(" and parent could not be found in reactor");
                 }
 
                 add(Severity.FATAL, Version.BASE, buffer.toString(), parent.getLocation(""), e);
@@ -1055,8 +1088,7 @@ public class DefaultModelBuilder implements ModelBuilder {
             DefaultProfileActivationContext profileActivationContext = getProfileActivationContext(request, inputModel);
 
             setSource("(external profiles)");
-            List<Profile> activeExternalProfiles =
-                    profileSelector.getActiveProfiles(request.getProfiles(), profileActivationContext, this);
+            List<Profile> activeExternalProfiles = getActiveProfiles(request.getProfiles(), profileActivationContext);
 
             result.setActiveExternalProfiles(activeExternalProfiles);
 
@@ -1071,8 +1103,7 @@ public class DefaultModelBuilder implements ModelBuilder {
 
             profileActivationContext.setProjectProperties(inputModel.getProperties());
             setSource(inputModel);
-            List<Profile> activePomProfiles =
-                    profileSelector.getActiveProfiles(inputModel.getProfiles(), profileActivationContext, this);
+            List<Profile> activePomProfiles = getActiveProfiles(inputModel.getProfiles(), profileActivationContext);
 
             // model normalization
             setSource(inputModel);
@@ -1114,12 +1145,29 @@ public class DefaultModelBuilder implements ModelBuilder {
             }
 
             Model parentModel = readParent(inputModel);
+            // Now that we have read the parent, we can set the relative
+            // path correctly if it was not set in the input model
+            if (inputModel.getParent() != null && inputModel.getParent().getRelativePath() == null) {
+                String relPath;
+                if (parentModel.getPomFile() != null
+                        && (request.getRequestType() == ModelBuilderRequest.RequestType.BUILD_POM
+                                || request.getRequestType() == ModelBuilderRequest.RequestType.CONSUMER_POM)) {
+                    relPath = inputModel
+                            .getPomFile()
+                            .getParent()
+                            .relativize(parentModel.getPomFile().getParent())
+                            .toString();
+                } else {
+                    relPath = "..";
+                }
+                inputModel = inputModel.withParent(inputModel.getParent().withRelativePath(relPath));
+            }
 
             List<Profile> parentInterpolatedProfiles =
                     interpolateActivations(parentModel.getProfiles(), profileActivationContext, this);
             // profile injection
             List<Profile> parentActivePomProfiles =
-                    profileSelector.getActiveProfiles(parentInterpolatedProfiles, profileActivationContext, this);
+                    getActiveProfiles(parentInterpolatedProfiles, profileActivationContext);
             Model injectedParentModel = profileInjector
                     .injectProfiles(parentModel, parentActivePomProfiles, request, this)
                     .withProfiles(List.of());
@@ -1136,8 +1184,7 @@ public class DefaultModelBuilder implements ModelBuilder {
                     interpolateActivations(model.getProfiles(), profileActivationContext, this);
 
             // profile injection
-            List<Profile> activePomProfiles =
-                    profileSelector.getActiveProfiles(interpolatedProfiles, profileActivationContext, this);
+            List<Profile> activePomProfiles = getActiveProfiles(interpolatedProfiles, profileActivationContext);
             result.setActivePomProfiles(activePomProfiles);
             model = profileInjector.injectProfiles(model, activePomProfiles, request, this);
             model = profileInjector.injectProfiles(model, activeExternalProfiles, request, this);
@@ -1165,6 +1212,15 @@ public class DefaultModelBuilder implements ModelBuilder {
             return resultModel;
         }
 
+        private List<Profile> getActiveProfiles(
+                Collection<Profile> interpolatedProfiles, DefaultProfileActivationContext profileActivationContext) {
+            if (request.getRequestType() != ModelBuilderRequest.RequestType.CONSUMER_POM) {
+                return profileSelector.getActiveProfiles(interpolatedProfiles, profileActivationContext, this);
+            } else {
+                return List.of();
+            }
+        }
+
         Model readFileModel() throws ModelBuilderException {
             Model model = cache(request.getSource(), FILE, this::doReadFileModel);
             // set the file model in the result outside the cache
@@ -1176,19 +1232,11 @@ public class DefaultModelBuilder implements ModelBuilder {
         Model doReadFileModel() throws ModelBuilderException {
             ModelSource modelSource = request.getSource();
             Model model;
-            Path rootDirectory;
+            Path rootDirectory = request.getSession().getRootDirectory();
             setSource(modelSource.getLocation());
             logger.debug("Reading file model from " + modelSource.getLocation());
             try {
                 boolean strict = request.getRequestType() == ModelBuilderRequest.RequestType.BUILD_POM;
-                try {
-                    rootDirectory = request.getSession().getRootDirectory();
-                } catch (IllegalStateException ignore) {
-                    rootDirectory = modelSource.getPath();
-                    while (rootDirectory != null && !Files.isDirectory(rootDirectory)) {
-                        rootDirectory = rootDirectory.getParent();
-                    }
-                }
                 try (InputStream is = modelSource.openStream()) {
                     model = modelProcessor.read(XmlReaderRequest.builder()
                             .strict(strict)
@@ -1261,7 +1309,8 @@ public class DefaultModelBuilder implements ModelBuilder {
                 }
             }
 
-            if (request.getRequestType() == ModelBuilderRequest.RequestType.BUILD_POM) {
+            if (request.getRequestType() == ModelBuilderRequest.RequestType.BUILD_POM
+                    || request.getRequestType() == ModelBuilderRequest.RequestType.CONSUMER_POM) {
                 model = model.withPomFile(modelSource.getPath());
 
                 Parent parent = model.getParent();
@@ -1269,10 +1318,11 @@ public class DefaultModelBuilder implements ModelBuilder {
                     String groupId = parent.getGroupId();
                     String artifactId = parent.getArtifactId();
                     String version = parent.getVersion();
-                    String path = Optional.ofNullable(parent.getRelativePath()).orElse("..");
-                    if (version == null && !path.isEmpty()) {
+                    String path = parent.getRelativePath();
+                    if ((groupId == null || artifactId == null || version == null)
+                            && (path == null || !path.isEmpty())) {
                         Path pomFile = model.getPomFile();
-                        Path relativePath = Paths.get(path);
+                        Path relativePath = Paths.get(path != null ? path : "..");
                         Path pomPath = pomFile.resolveSibling(relativePath).normalize();
                         if (Files.isDirectory(pomPath)) {
                             pomPath = modelProcessor.locateExistingPom(pomPath);
@@ -1280,18 +1330,23 @@ public class DefaultModelBuilder implements ModelBuilder {
                         if (pomPath != null && Files.isRegularFile(pomPath)) {
                             Model parentModel =
                                     derive(ModelSource.fromPath(pomPath)).readFileModel();
-                            if (parentModel != null) {
-                                String parentGroupId = getGroupId(parentModel);
-                                String parentArtifactId = parentModel.getArtifactId();
-                                String parentVersion = getVersion(parentModel);
-                                if ((groupId == null || groupId.equals(parentGroupId))
-                                        && (artifactId == null || artifactId.equals(parentArtifactId))) {
-                                    model = model.withParent(parent.with()
-                                            .groupId(parentGroupId)
-                                            .artifactId(parentArtifactId)
-                                            .version(parentVersion)
-                                            .build());
-                                }
+                            String parentGroupId = getGroupId(parentModel);
+                            String parentArtifactId = parentModel.getArtifactId();
+                            String parentVersion = getVersion(parentModel);
+                            if ((groupId == null || groupId.equals(parentGroupId))
+                                    && (artifactId == null || artifactId.equals(parentArtifactId))
+                                    && (version == null || version.equals(parentVersion))) {
+                                model = model.withParent(parent.with()
+                                        .groupId(parentGroupId)
+                                        .artifactId(parentArtifactId)
+                                        .version(parentVersion)
+                                        .build());
+                            } else {
+                                mismatchRelativePathAndGA(model, parentGroupId, parentArtifactId);
+                            }
+                        } else {
+                            if (!MODEL_VERSION_4_0_0.equals(model.getModelVersion()) && path != null) {
+                                wrongParentRelativePath(model);
                             }
                         }
                     }
@@ -1327,9 +1382,12 @@ public class DefaultModelBuilder implements ModelBuilder {
                 // defined on the root project.
                 Map<String, String> properties = new HashMap<>();
                 if (!Objects.equals(rootDirectory, model.getProjectDirectory())) {
-                    Model rootModel = derive(ModelSource.fromPath(modelProcessor.locateExistingPom(rootDirectory)))
-                            .readFileModel();
-                    properties.putAll(rootModel.getProperties());
+                    Path rootModelPath = modelProcessor.locateExistingPom(rootDirectory);
+                    if (rootModelPath != null) {
+                        Model rootModel =
+                                derive(ModelSource.fromPath(rootModelPath)).readFileModel();
+                        properties.putAll(rootModel.getProperties());
+                    }
                 } else {
                     properties.putAll(model.getProperties());
                 }
@@ -1379,7 +1437,8 @@ public class DefaultModelBuilder implements ModelBuilder {
             Model rawModel = readFileModel();
 
             if (!MODEL_VERSION_4_0_0.equals(rawModel.getModelVersion())
-                    && request.getRequestType() == ModelBuilderRequest.RequestType.BUILD_POM) {
+                    && (request.getRequestType() == ModelBuilderRequest.RequestType.BUILD_POM
+                            || request.getRequestType() == ModelBuilderRequest.RequestType.CONSUMER_POM)) {
                 rawModel = transformFileToRaw(rawModel);
             }
 
@@ -1588,12 +1647,7 @@ public class DefaultModelBuilder implements ModelBuilder {
                 return null;
             }
 
-            Path rootDirectory;
-            try {
-                rootDirectory = request.getSession().getRootDirectory();
-            } catch (IllegalStateException e) {
-                rootDirectory = null;
-            }
+            Path rootDirectory = request.getSession().getRootDirectory();
             if (request.getRequestType() == ModelBuilderRequest.RequestType.BUILD_POM && rootDirectory != null) {
                 Path sourcePath = importSource.getPath();
                 if (sourcePath != null && sourcePath.startsWith(rootDirectory)) {
@@ -1615,7 +1669,7 @@ public class DefaultModelBuilder implements ModelBuilder {
                         .source(importSource)
                         .repositories(repositories)
                         .build();
-                DefaultModelBuilderSession modelBuilderSession = new DefaultModelBuilderSession(importRequest);
+                DefaultModelBuilderSession modelBuilderSession = derive(importRequest);
                 // build the effective model
                 modelBuilderSession.buildEffectiveModel(importIds);
                 importResult = modelBuilderSession.result;
@@ -1636,7 +1690,7 @@ public class DefaultModelBuilder implements ModelBuilder {
             if (sources != null) {
                 for (ModelSource source : sources) {
                     Model model = derive(source).readRawModel();
-                    if (Objects.equals(model.getVersion(), version)) {
+                    if (Objects.equals(getVersion(model), version)) {
                         return source;
                     }
                 }
@@ -1652,6 +1706,73 @@ public class DefaultModelBuilder implements ModelBuilder {
         private <T> T cache(Source source, String tag, Supplier<T> supplier) {
             return cache.computeIfAbsent(source, tag, supplier);
         }
+
+        private List<Profile> interpolateActivations(
+                List<Profile> profiles, DefaultProfileActivationContext context, ModelProblemCollector problems) {
+            if (profiles.stream()
+                    .map(org.apache.maven.api.model.Profile::getActivation)
+                    .noneMatch(Objects::nonNull)) {
+                return profiles;
+            }
+            Interpolator interpolator = request.getSession().getService(Interpolator.class);
+
+            class ProfileInterpolator extends MavenTransformer implements UnaryOperator<Profile> {
+                ProfileInterpolator() {
+                    super(s -> {
+                        try {
+                            Map<String, String> map1 = context.getUserProperties();
+                            Map<String, String> map2 = context.getSystemProperties();
+                            return interpolator.interpolate(s, Interpolator.chain(List.of(map1::get, map2::get)));
+                        } catch (InterpolatorException e) {
+                            problems.add(Severity.ERROR, Version.BASE, e.getMessage(), e);
+                        }
+                        return s;
+                    });
+                }
+
+                @Override
+                public Profile apply(Profile p) {
+                    return Profile.newBuilder(p)
+                            .activation(transformActivation(p.getActivation()))
+                            .build();
+                }
+
+                @Override
+                protected ActivationFile.Builder transformActivationFile_Missing(
+                        Supplier<? extends ActivationFile.Builder> creator,
+                        ActivationFile.Builder builder,
+                        ActivationFile target) {
+                    String path = target.getMissing();
+                    String xformed = transformPath(path, target, "missing");
+                    return xformed != path ? (builder != null ? builder : creator.get()).missing(xformed) : builder;
+                }
+
+                @Override
+                protected ActivationFile.Builder transformActivationFile_Exists(
+                        Supplier<? extends ActivationFile.Builder> creator,
+                        ActivationFile.Builder builder,
+                        ActivationFile target) {
+                    final String path = target.getExists();
+                    final String xformed = transformPath(path, target, "exists");
+                    return xformed != path ? (builder != null ? builder : creator.get()).exists(xformed) : builder;
+                }
+
+                private String transformPath(String path, ActivationFile target, String locationKey) {
+                    try {
+                        return profileActivationFilePathInterpolator.interpolate(path, context);
+                    } catch (InterpolatorException e) {
+                        problems.add(
+                                Severity.ERROR,
+                                Version.BASE,
+                                "Failed to interpolate file location " + path + ": " + e.getMessage(),
+                                target.getLocation(locationKey),
+                                e);
+                    }
+                    return path;
+                }
+            }
+            return profiles.stream().map(new ProfileInterpolator()).toList();
+        }
     }
 
     @SuppressWarnings("deprecation")
@@ -1661,83 +1782,6 @@ public class DefaultModelBuilder implements ModelBuilder {
             subprojects = activated.getModules();
         }
         return subprojects;
-    }
-
-    private List<Profile> interpolateActivations(
-            List<Profile> profiles, DefaultProfileActivationContext context, ModelProblemCollector problems) {
-        if (profiles.stream()
-                .map(org.apache.maven.api.model.Profile::getActivation)
-                .noneMatch(Objects::nonNull)) {
-            return profiles;
-        }
-        final Interpolator xform = new RegexBasedInterpolator();
-        xform.setCacheAnswers(true);
-        Stream.of(context.getUserProperties(), context.getSystemProperties())
-                .map(MapBasedValueSource::new)
-                .forEach(xform::addValueSource);
-
-        class ProfileInterpolator extends MavenTransformer implements UnaryOperator<Profile> {
-            ProfileInterpolator() {
-                super(s -> {
-                    if (isNotEmpty(s)) {
-                        try {
-                            return xform.interpolate(s);
-                        } catch (InterpolationException e) {
-                            problems.add(Severity.ERROR, Version.BASE, e.getMessage(), e);
-                        }
-                    }
-                    return s;
-                });
-            }
-
-            @Override
-            public Profile apply(Profile p) {
-                return Profile.newBuilder(p)
-                        .activation(transformActivation(p.getActivation()))
-                        .build();
-            }
-
-            @Override
-            protected ActivationFile.Builder transformActivationFile_Missing(
-                    Supplier<? extends ActivationFile.Builder> creator,
-                    ActivationFile.Builder builder,
-                    ActivationFile target) {
-                String path = target.getMissing();
-                String xformed = transformPath(path, target, "missing");
-                return xformed != path ? (builder != null ? builder : creator.get()).missing(xformed) : builder;
-            }
-
-            @Override
-            protected ActivationFile.Builder transformActivationFile_Exists(
-                    Supplier<? extends ActivationFile.Builder> creator,
-                    ActivationFile.Builder builder,
-                    ActivationFile target) {
-                final String path = target.getExists();
-                final String xformed = transformPath(path, target, "exists");
-                return xformed != path ? (builder != null ? builder : creator.get()).exists(xformed) : builder;
-            }
-
-            private String transformPath(String path, ActivationFile target, String locationKey) {
-                if (isNotEmpty(path)) {
-                    try {
-                        return profileActivationFilePathInterpolator.interpolate(path, context);
-                    } catch (InterpolationException e) {
-                        problems.add(
-                                Severity.ERROR,
-                                Version.BASE,
-                                "Failed to interpolate file location " + path + ": " + e.getMessage(),
-                                target.getLocation(locationKey),
-                                e);
-                    }
-                }
-                return path;
-            }
-        }
-        return profiles.stream().map(new ProfileInterpolator()).toList();
-    }
-
-    private static boolean isNotEmpty(String string) {
-        return string != null && !string.isEmpty();
     }
 
     public Model buildRawModel(ModelBuilderRequest request) throws ModelBuilderException {
@@ -1807,13 +1851,13 @@ public class DefaultModelBuilder implements ModelBuilder {
         Model interpolatedModel =
                 modelInterpolator.interpolateModel(model, model.getProjectDirectory(), request, problems);
         if (interpolatedModel.getParent() != null) {
-            StringSearchInterpolator ssi = new StringSearchInterpolator();
-            ssi.addValueSource(new MapBasedValueSource(request.getSession().getUserProperties()));
-            ssi.addValueSource(new MapBasedValueSource(model.getProperties()));
-            ssi.addValueSource(new MapBasedValueSource(request.getSession().getSystemProperties()));
+            Map<String, String> map1 = request.getSession().getUserProperties();
+            Map<String, String> map2 = model.getProperties();
+            Map<String, String> map3 = request.getSession().getSystemProperties();
+            Function<String, String> cb = Interpolator.chain(List.of(map1::get, map2::get, map3::get));
             try {
                 String interpolated =
-                        ssi.interpolate(interpolatedModel.getParent().getVersion());
+                        interpolator.interpolate(interpolatedModel.getParent().getVersion(), cb);
                 interpolatedModel = interpolatedModel.withParent(
                         interpolatedModel.getParent().withVersion(interpolated));
             } catch (Exception e) {
@@ -1835,15 +1879,6 @@ public class DefaultModelBuilder implements ModelBuilder {
                 || rawChildModelVersion.equals("${project.version}")
                 || rawChildModelVersion.equals("${pom.parent.version}")
                 || rawChildModelVersion.equals("${project.parent.version}");
-    }
-
-    private ModelSource getParentPomFile(Model childModel, ModelSource source) {
-        String parentPath = childModel.getParent().getRelativePath();
-        if (parentPath == null || parentPath.isEmpty()) {
-            return null;
-        } else {
-            return source.resolve(modelProcessor::locateExistingPom, parentPath);
-        }
     }
 
     private Model getSuperModel(String modelVersion) {

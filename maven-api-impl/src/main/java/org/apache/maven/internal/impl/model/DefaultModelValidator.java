@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
@@ -283,9 +284,9 @@ public class DefaultModelValidator implements ModelValidator {
         }
     }
 
-    private final Set<String> validCoordinatesIds = new HashSet<>();
+    private final Set<String> validCoordinatesIds = ConcurrentHashMap.newKeySet();
 
-    private final Set<String> validProfileIds = new HashSet<>();
+    private final Set<String> validProfileIds = ConcurrentHashMap.newKeySet();
 
     @Inject
     public DefaultModelValidator() {}
@@ -323,6 +324,24 @@ public class DefaultModelValidator implements ModelValidator {
                         "parent.version",
                         null,
                         "is either LATEST or RELEASE (both of them are being deprecated)",
+                        parent);
+            }
+
+            if (parent.getRelativePath() != null
+                    && !parent.getRelativePath().isEmpty()
+                    && (parent.getGroupId() != null && !parent.getGroupId().isEmpty()
+                            || parent.getArtifactId() != null
+                                    && !parent.getArtifactId().isEmpty())
+                    && validationLevel >= ModelValidator.VALIDATION_LEVEL_MAVEN_4_0
+                    && VALID_MODEL_VERSIONS.contains(m.getModelVersion())
+                    && !Objects.equals(m.getModelVersion(), ModelBuilder.MODEL_VERSION_4_0_0)) {
+                addViolation(
+                        problems,
+                        Severity.WARNING,
+                        Version.BASE,
+                        "parent.relativePath",
+                        null,
+                        "only specify relativePath or groupId/artifactId in modelVersion 4.1.0",
                         parent);
             }
         }
@@ -1496,7 +1515,7 @@ public class DefaultModelValidator implements ModelValidator {
             String id,
             String sourceHint,
             InputLocationTracker tracker) {
-        if (validCoordinatesIds.contains(id)) {
+        if (id != null && validCoordinatesIds.contains(id)) {
             return true;
         }
         if (!validateStringNotEmpty(prefix, fieldName, problems, severity, version, id, sourceHint, tracker)) {

@@ -27,12 +27,12 @@ import org.apache.maven.api.model.Activation;
 import org.apache.maven.api.model.ActivationFile;
 import org.apache.maven.api.model.Profile;
 import org.apache.maven.api.services.BuilderProblem;
+import org.apache.maven.api.services.InterpolatorException;
 import org.apache.maven.api.services.ModelProblem;
 import org.apache.maven.api.services.ModelProblemCollector;
 import org.apache.maven.api.services.model.ProfileActivationContext;
 import org.apache.maven.api.services.model.ProfileActivator;
 import org.apache.maven.internal.impl.model.ProfileActivationFilePathInterpolator;
-import org.codehaus.plexus.interpolation.InterpolationException;
 
 /**
  * Determines profile activation based on the existence/absence of some file.
@@ -70,10 +70,22 @@ public class FileProfileActivator implements ProfileActivator {
         String path;
         boolean missing;
 
-        if (file.getExists() != null && !file.getExists().isEmpty()) {
+        boolean hasExists = file.getExists() != null && !file.getExists().isEmpty();
+        boolean hasMissing = file.getMissing() != null && !file.getMissing().isEmpty();
+        if (hasExists) {
+            if (hasMissing) {
+                problems.add(
+                        BuilderProblem.Severity.WARNING,
+                        ModelProblem.Version.BASE,
+                        String.format(
+                                "Profile '%s' file activation conflict: Both 'missing' (%s) and 'exists' assertions are defined. "
+                                        + "The 'missing' assertion will be ignored. Please remove one assertion to resolve this conflict.",
+                                profile.getId(), file.getMissing()),
+                        file.getLocation("missing"));
+            }
             path = file.getExists();
             missing = false;
-        } else if (file.getMissing() != null && !file.getMissing().isEmpty()) {
+        } else if (hasMissing) {
             path = file.getMissing();
             missing = true;
         } else {
@@ -82,7 +94,7 @@ public class FileProfileActivator implements ProfileActivator {
 
         try {
             path = profileActivationFilePathInterpolator.interpolate(path, context);
-        } catch (InterpolationException e) {
+        } catch (InterpolatorException e) {
             problems.add(
                     BuilderProblem.Severity.ERROR,
                     ModelProblem.Version.BASE,
