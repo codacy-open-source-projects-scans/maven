@@ -87,7 +87,7 @@ public interface Options {
     Optional<Boolean> verbose();
 
     /**
-     * Indicates whether to show error messages.
+     * Indicates whether to show error stack traces.
      *
      * @return an {@link Optional} containing the boolean flag, or empty if not set
      */
@@ -165,6 +165,14 @@ public interface Options {
      */
     @Nonnull
     Optional<String> logFile();
+
+    /**
+     * Returns whether raw streams should be logged.
+     *
+     * @return a boolean indicating whether raw streams should be logged
+     */
+    @Nonnull
+    Optional<Boolean> rawStreams();
 
     /**
      * Returns the color setting for console output.
