@@ -25,22 +25,37 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 import org.apache.maven.api.Constants;
+import org.apache.maven.api.Session;
 import org.apache.maven.api.cli.Invoker;
 import org.apache.maven.api.cli.InvokerException;
 import org.apache.maven.api.cli.InvokerRequest;
 import org.apache.maven.api.cli.Logger;
 import org.apache.maven.api.cli.Options;
+import org.apache.maven.api.services.BuilderProblem;
+import org.apache.maven.api.services.Interpolator;
 import org.apache.maven.api.services.Lookup;
 import org.apache.maven.api.services.MavenException;
 import org.apache.maven.api.services.MessageBuilder;
+import org.apache.maven.api.services.SettingsBuilder;
+import org.apache.maven.api.services.SettingsBuilderRequest;
+import org.apache.maven.api.services.SettingsBuilderResult;
+import org.apache.maven.api.services.Source;
+import org.apache.maven.api.settings.Mirror;
+import org.apache.maven.api.settings.Profile;
+import org.apache.maven.api.settings.Proxy;
+import org.apache.maven.api.settings.Repository;
+import org.apache.maven.api.settings.Server;
+import org.apache.maven.api.settings.Settings;
 import org.apache.maven.artifact.InvalidRepositoryException;
 import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.artifact.repository.ArtifactRepositoryPolicy;
@@ -54,37 +69,24 @@ import org.apache.maven.cli.transfer.ConsoleMavenTransferListener;
 import org.apache.maven.cli.transfer.QuietMavenTransferListener;
 import org.apache.maven.cli.transfer.SimplexTransferListener;
 import org.apache.maven.cli.transfer.Slf4jMavenTransferListener;
+import org.apache.maven.cling.invoker.mvn.ProtoSession;
 import org.apache.maven.execution.MavenExecutionRequest;
+import org.apache.maven.internal.impl.SettingsUtilsV4;
 import org.apache.maven.jline.FastTerminal;
 import org.apache.maven.jline.MessageUtils;
-import org.apache.maven.logging.BuildEventListener;
 import org.apache.maven.logging.LoggingOutputStream;
-import org.apache.maven.logging.ProjectBuildLogAppender;
-import org.apache.maven.logging.SimpleBuildEventListener;
 import org.apache.maven.logging.api.LogLevelRecorder;
-import org.apache.maven.settings.Mirror;
-import org.apache.maven.settings.Profile;
-import org.apache.maven.settings.Proxy;
-import org.apache.maven.settings.Repository;
-import org.apache.maven.settings.Server;
-import org.apache.maven.settings.Settings;
-import org.apache.maven.settings.SettingsUtils;
-import org.apache.maven.settings.building.DefaultSettingsBuildingRequest;
-import org.apache.maven.settings.building.SettingsBuilder;
-import org.apache.maven.settings.building.SettingsBuildingRequest;
-import org.apache.maven.settings.building.SettingsBuildingResult;
-import org.apache.maven.settings.building.SettingsProblem;
 import org.apache.maven.slf4j.MavenSimpleLogger;
 import org.eclipse.aether.transfer.TransferListener;
-import org.jline.jansi.AnsiConsole;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
+import org.jline.terminal.impl.AbstractPosixTerminal;
+import org.jline.terminal.spi.TerminalExt;
 import org.slf4j.ILoggerFactory;
 import org.slf4j.LoggerFactory;
 import org.slf4j.spi.LocationAwareLogger;
 
 import static java.util.Objects.requireNonNull;
-import static org.apache.maven.cling.invoker.Utils.toFile;
 import static org.apache.maven.cling.invoker.Utils.toMavenExecutionRequestLoggingLevel;
 import static org.apache.maven.cling.invoker.Utils.toProperties;
 
@@ -122,6 +124,7 @@ public abstract class LookupInvoker<
         public final Function<String, Path> cwdResolver;
         public final Function<String, Path> installationResolver;
         public final Function<String, Path> userResolver;
+        public final Session session;
 
         protected LookupInvokerContext(LookupInvoker<O, R, C> invoker, R invokerRequest) {
             this.invoker = invoker;
@@ -136,14 +139,21 @@ public abstract class LookupInvoker<
             this.userResolver = s ->
                     invokerRequest.userHomeDirectory().resolve(s).normalize().toAbsolutePath();
             this.logger = invokerRequest.parserRequest().logger();
+
+            Map<String, String> user = new HashMap<>(invokerRequest.userProperties());
+            user.put("session.rootDirectory", invokerRequest.rootDirectory().toString());
+            user.put("session.topDirectory", invokerRequest.topDirectory().toString());
+            Map<String, String> system = new HashMap<>(invokerRequest.systemProperties());
+            this.session = ProtoSession.create(user, system);
         }
 
         public Logger logger;
         public ILoggerFactory loggerFactory;
         public Slf4jConfiguration slf4jConfiguration;
         public Slf4jConfiguration.Level loggerLevel;
+        public Boolean coloredOutput;
         public Terminal terminal;
-        public BuildEventListener buildEventListener;
+        public Consumer<String> writer;
         public ClassLoader currentThreadContextClassLoader;
         public ContainerCapsule containerCapsule;
         public Lookup lookup;
@@ -271,9 +281,9 @@ public abstract class LookupInvoker<
                 .orElse(userProperties.getOrDefault(
                         Constants.MAVEN_STYLE_COLOR_PROPERTY, userProperties.getOrDefault("style.color", "auto")));
         if ("always".equals(styleColor) || "yes".equals(styleColor) || "force".equals(styleColor)) {
-            MessageUtils.setColorEnabled(true);
+            context.coloredOutput = true;
         } else if ("never".equals(styleColor) || "no".equals(styleColor) || "none".equals(styleColor)) {
-            MessageUtils.setColorEnabled(false);
+            context.coloredOutput = false;
         } else if (!"auto".equals(styleColor) && !"tty".equals(styleColor) && !"if-tty".equals(styleColor)) {
             throw new IllegalArgumentException(
                     "Invalid color configuration value '" + styleColor + "'. Supported are 'auto', 'always', 'never'.");
@@ -281,7 +291,7 @@ public abstract class LookupInvoker<
             boolean isBatchMode = !mavenOptions.forceInteractive().orElse(false)
                     && mavenOptions.nonInteractive().orElse(false);
             if (isBatchMode || mavenOptions.logFile().isPresent()) {
-                MessageUtils.setColorEnabled(false);
+                context.coloredOutput = false;
             }
         }
 
@@ -302,31 +312,32 @@ public abstract class LookupInvoker<
         // so boot it asynchronously
         context.terminal = createTerminal(context);
         context.closeables.add(MessageUtils::systemUninstall);
-
-        // Create the build log appender
-        ProjectBuildLogAppender projectBuildLogAppender =
-                new ProjectBuildLogAppender(determineBuildEventListener(context));
-        context.closeables.add(projectBuildLogAppender);
+        MessageUtils.registerShutdownHook(); // safety belt
+        if (context.coloredOutput != null) {
+            MessageUtils.setColorEnabled(context.coloredOutput);
+        }
     }
 
     protected Terminal createTerminal(C context) {
-        return new FastTerminal(
-                () -> TerminalBuilder.builder()
-                        .name("Maven")
-                        .streams(
-                                context.invokerRequest.in().orElse(null),
-                                context.invokerRequest.out().orElse(null))
-                        .dumb(true)
-                        .build(),
+        MessageUtils.systemInstall(
+                builder -> {
+                    builder.streams(
+                            context.invokerRequest.in().orElse(null),
+                            context.invokerRequest.out().orElse(null));
+                    builder.systemOutput(TerminalBuilder.SystemOutput.ForcedSysOut);
+                    // The exec builder suffers from https://github.com/jline/jline3/issues/1098
+                    // We could re-enable it when fixed to provide support for non-standard architectures,
+                    // for which JLine does not provide any native library.
+                    builder.exec(false);
+                    if (context.coloredOutput != null) {
+                        builder.color(context.coloredOutput);
+                    }
+                },
                 terminal -> doConfigureWithTerminal(context, terminal));
+        return MessageUtils.getTerminal();
     }
 
     protected void doConfigureWithTerminal(C context, Terminal terminal) {
-        MessageUtils.systemInstall(terminal);
-        AnsiConsole.setTerminal(terminal);
-        AnsiConsole.systemInstall();
-        MessageUtils.registerShutdownHook(); // safety belt
-
         O options = context.invokerRequest.options();
         if (options.rawStreams().isEmpty() || !options.rawStreams().get()) {
             MavenSimpleLogger stdout = (MavenSimpleLogger) context.loggerFactory.getLogger("stdout");
@@ -339,34 +350,33 @@ public abstract class LookupInvoker<
         }
     }
 
-    protected BuildEventListener determineBuildEventListener(C context) {
-        if (context.buildEventListener == null) {
-            context.buildEventListener = doDetermineBuildEventListener(context);
+    protected Consumer<String> determineWriter(C context) {
+        if (context.writer == null) {
+            context.writer = doDetermineWriter(context);
         }
-        return context.buildEventListener;
+        return context.writer;
     }
 
-    protected BuildEventListener doDetermineBuildEventListener(C context) {
-        BuildEventListener bel;
+    protected Consumer<String> doDetermineWriter(C context) {
         O options = context.invokerRequest.options();
         if (options.logFile().isPresent()) {
             Path logFile = context.cwdResolver.apply(options.logFile().get());
             try {
                 PrintWriter printWriter = new PrintWriter(Files.newBufferedWriter(logFile));
-                bel = new SimpleBuildEventListener(printWriter::println);
+                context.closeables.add(printWriter);
+                return printWriter::println;
             } catch (IOException e) {
                 throw new MavenException("Unable to redirect logging to " + logFile, e);
             }
         } else {
             // Given the terminal creation has been offloaded to a different thread,
-            // do not pass directory the terminal writer
-            bel = new SimpleBuildEventListener(msg -> {
+            // do not pass directly the terminal writer
+            return msg -> {
                 PrintWriter pw = context.terminal.writer();
                 pw.println(msg);
                 pw.flush();
-            });
+            };
         }
-        return bel;
     }
 
     protected void activateLogging(C context) throws Exception {
@@ -404,25 +414,54 @@ public abstract class LookupInvoker<
     protected void helpOrVersionAndMayExit(C context) throws Exception {
         R invokerRequest = context.invokerRequest;
         if (invokerRequest.options().help().isPresent()) {
-            invokerRequest.options().displayHelp(context.invokerRequest.parserRequest(), context.terminal.writer());
-            context.terminal.writer().flush();
+            Consumer<String> writer = determineWriter(context);
+            invokerRequest.options().displayHelp(context.invokerRequest.parserRequest(), writer);
             throw new ExitException(0);
         }
         if (invokerRequest.options().showVersionAndExit().isPresent()) {
-            if (invokerRequest.options().quiet().orElse(false)) {
-                context.terminal.writer().println(CLIReportingUtils.showVersionMinimal());
-            } else {
-                context.terminal.writer().println(CLIReportingUtils.showVersion());
-            }
-            context.terminal.writer().flush();
+            showVersion(context);
             throw new ExitException(0);
         }
     }
 
+    protected void showVersion(C context) {
+        Consumer<String> writer = determineWriter(context);
+        R invokerRequest = context.invokerRequest;
+        if (invokerRequest.options().quiet().orElse(false)) {
+            writer.accept(CLIReportingUtils.showVersionMinimal());
+        } else if (invokerRequest.options().verbose().orElse(false)) {
+            writer.accept(CLIReportingUtils.showVersion(
+                    ProcessHandle.current().info().commandLine().orElse(null), describe(context.terminal)));
+
+        } else {
+            writer.accept(CLIReportingUtils.showVersion());
+        }
+    }
+
+    protected String describe(Terminal terminal) {
+        if (terminal == null) {
+            return null;
+        }
+        if (terminal instanceof FastTerminal ft) {
+            terminal = ft.getTerminal();
+        }
+        List<String> subs = new ArrayList<>();
+        subs.add("type=" + terminal.getType());
+        if (terminal instanceof TerminalExt te) {
+            subs.add("provider=" + te.getProvider().name());
+        }
+        if (terminal instanceof AbstractPosixTerminal pt) {
+            subs.add("pty=" + pt.getPty().getClass().getName());
+        }
+        return terminal.getClass().getSimpleName() + " (" + String.join(", ", subs) + ")";
+    }
+
     protected void preCommands(C context) throws Exception {
         Options mavenOptions = context.invokerRequest.options();
-        if (mavenOptions.verbose().orElse(false) || mavenOptions.showVersion().orElse(false)) {
-            context.terminal.writer().println(CLIReportingUtils.showVersion());
+        boolean verbose = mavenOptions.verbose().orElse(false);
+        boolean version = mavenOptions.showVersion().orElse(false);
+        if (verbose || version) {
+            showVersion(context);
         }
     }
 
@@ -535,36 +574,32 @@ public abstract class LookupInvoker<
         context.projectSettingsPath = projectSettingsFile;
         context.userSettingsPath = userSettingsFile;
 
-        SettingsBuildingRequest settingsRequest = new DefaultSettingsBuildingRequest();
-        settingsRequest.setGlobalSettingsFile(toFile(installationSettingsFile));
-        settingsRequest.setProjectSettingsFile(toFile(projectSettingsFile));
-        settingsRequest.setUserSettingsFile(toFile(userSettingsFile));
-        settingsRequest.setSystemProperties(toProperties(context.invokerRequest.systemProperties()));
-        Properties props = toProperties(context.invokerRequest.userProperties());
-        props.put(
-                "session.rootDirectory", context.invokerRequest.rootDirectory().toString());
-        props.put("session.topDirectory", context.invokerRequest.topDirectory().toString());
+        Function<String, String> interpolationSource = Interpolator.chain(
+                context.invokerRequest.userProperties()::get, context.invokerRequest.systemProperties()::get);
+        SettingsBuilderRequest settingsRequest = SettingsBuilderRequest.builder()
+                .session(context.session)
+                .installationSettingsSource(
+                        installationSettingsFile != null && Files.exists(installationSettingsFile)
+                                ? Source.fromPath(installationSettingsFile)
+                                : null)
+                .projectSettingsSource(
+                        projectSettingsFile != null && Files.exists(projectSettingsFile)
+                                ? Source.fromPath(projectSettingsFile)
+                                : null)
+                .userSettingsSource(
+                        userSettingsFile != null && Files.exists(userSettingsFile)
+                                ? Source.fromPath(userSettingsFile)
+                                : null)
+                .interpolationSource(interpolationSource)
+                .build();
 
-        settingsRequest.setUserProperties(props);
         customizeSettingsRequest(context, settingsRequest);
 
-        context.logger.debug("Reading installation settings from '"
-                + (settingsRequest.getGlobalSettingsSource() != null
-                        ? settingsRequest.getGlobalSettingsSource().getLocation()
-                        : settingsRequest.getGlobalSettingsFile())
-                + "'");
-        context.logger.debug("Reading project settings from '"
-                + (settingsRequest.getProjectSettingsSource() != null
-                        ? settingsRequest.getProjectSettingsSource().getLocation()
-                        : settingsRequest.getProjectSettingsFile())
-                + "'");
-        context.logger.debug("Reading user settings from '"
-                + (settingsRequest.getUserSettingsSource() != null
-                        ? settingsRequest.getUserSettingsSource().getLocation()
-                        : settingsRequest.getUserSettingsFile())
-                + "'");
+        context.logger.debug("Reading installation settings from '" + installationSettingsFile + "'");
+        context.logger.debug("Reading project settings from '" + projectSettingsFile + "'");
+        context.logger.debug("Reading user settings from '" + userSettingsFile + "'");
 
-        SettingsBuildingResult settingsResult = settingsBuilder.build(settingsRequest);
+        SettingsBuilderResult settingsResult = settingsBuilder.build(settingsRequest);
         customizeSettingsResult(context, settingsResult);
 
         context.effectiveSettings = settingsResult.getEffectiveSettings();
@@ -575,17 +610,17 @@ public abstract class LookupInvoker<
             context.logger.warn("");
             context.logger.warn("Some problems were encountered while building the effective settings");
 
-            for (SettingsProblem problem : settingsResult.getProblems()) {
+            for (BuilderProblem problem : settingsResult.getProblems()) {
                 context.logger.warn(problem.getMessage() + " @ " + problem.getLocation());
             }
             context.logger.warn("");
         }
     }
 
-    protected void customizeSettingsRequest(C context, SettingsBuildingRequest settingsBuildingRequest)
+    protected void customizeSettingsRequest(C context, SettingsBuilderRequest settingsBuilderRequest)
             throws Exception {}
 
-    protected void customizeSettingsResult(C context, SettingsBuildingResult settingsBuildingResult) throws Exception {}
+    protected void customizeSettingsResult(C context, SettingsBuilderResult settingsBuilderResult) throws Exception {}
 
     protected boolean mayDisableInteractiveMode(C context, boolean proposedInteractive) {
         if (!context.invokerRequest.options().forceInteractive().orElse(false)) {
@@ -643,11 +678,13 @@ public abstract class LookupInvoker<
         request.setBaseDirectory(context.invokerRequest.topDirectory().toFile());
         request.setSystemProperties(toProperties(context.invokerRequest.systemProperties()));
         request.setUserProperties(toProperties(context.invokerRequest.userProperties()));
-        request.setMultiModuleProjectDirectory(
-                context.invokerRequest.rootDirectory().toFile());
 
-        request.setRootDirectory(context.invokerRequest.rootDirectory());
         request.setTopDirectory(context.invokerRequest.topDirectory());
+        if (context.invokerRequest.rootDirectory().isPresent()) {
+            request.setMultiModuleProjectDirectory(
+                    context.invokerRequest.rootDirectory().get().toFile());
+            request.setRootDirectory(context.invokerRequest.rootDirectory().get());
+        }
 
         request.addPluginGroup("org.apache.maven.plugins");
         request.addPluginGroup("org.codehaus.mojo");
@@ -674,7 +711,7 @@ public abstract class LookupInvoker<
         request.setPluginGroups(settings.getPluginGroups());
         request.setLocalRepositoryPath(settings.getLocalRepository());
         for (Server server : settings.getServers()) {
-            request.addServer(server);
+            request.addServer(new org.apache.maven.settings.Server(server));
         }
 
         //  <proxies>
@@ -693,7 +730,7 @@ public abstract class LookupInvoker<
             if (!proxy.isActive()) {
                 continue;
             }
-            request.addProxy(proxy);
+            request.addProxy(new org.apache.maven.settings.Proxy(proxy));
         }
 
         // <mirrors>
@@ -705,12 +742,13 @@ public abstract class LookupInvoker<
         // </mirrors>
 
         for (Mirror mirror : settings.getMirrors()) {
-            request.addMirror(mirror);
+            request.addMirror(new org.apache.maven.settings.Mirror(mirror));
         }
 
         for (Repository remoteRepository : settings.getRepositories()) {
             try {
-                request.addRemoteRepository(MavenRepositorySystem.buildArtifactRepository(remoteRepository));
+                request.addRemoteRepository(MavenRepositorySystem.buildArtifactRepository(
+                        new org.apache.maven.settings.Repository(remoteRepository)));
             } catch (InvalidRepositoryException e) {
                 // do nothing for now
             }
@@ -718,7 +756,8 @@ public abstract class LookupInvoker<
 
         for (Repository pluginRepository : settings.getPluginRepositories()) {
             try {
-                request.addPluginArtifactRepository(MavenRepositorySystem.buildArtifactRepository(pluginRepository));
+                request.addPluginArtifactRepository(MavenRepositorySystem.buildArtifactRepository(
+                        new org.apache.maven.settings.Repository(pluginRepository)));
             } catch (InvalidRepositoryException e) {
                 // do nothing for now
             }
@@ -726,13 +765,15 @@ public abstract class LookupInvoker<
 
         request.setActiveProfiles(settings.getActiveProfiles());
         for (Profile rawProfile : settings.getProfiles()) {
-            request.addProfile(SettingsUtils.convertFromSettingsProfile(rawProfile));
+            request.addProfile(
+                    new org.apache.maven.model.Profile(SettingsUtilsV4.convertFromSettingsProfile(rawProfile)));
 
             if (settings.getActiveProfiles().contains(rawProfile.getId())) {
                 List<Repository> remoteRepositories = rawProfile.getRepositories();
                 for (Repository remoteRepository : remoteRepositories) {
                     try {
-                        request.addRemoteRepository(MavenRepositorySystem.buildArtifactRepository(remoteRepository));
+                        request.addRemoteRepository(MavenRepositorySystem.buildArtifactRepository(
+                                new org.apache.maven.settings.Repository(remoteRepository)));
                     } catch (InvalidRepositoryException e) {
                         // do nothing for now
                     }
@@ -741,8 +782,8 @@ public abstract class LookupInvoker<
                 List<Repository> pluginRepositories = rawProfile.getPluginRepositories();
                 for (Repository pluginRepository : pluginRepositories) {
                     try {
-                        request.addPluginArtifactRepository(
-                                MavenRepositorySystem.buildArtifactRepository(pluginRepository));
+                        request.addPluginArtifactRepository(MavenRepositorySystem.buildArtifactRepository(
+                                new org.apache.maven.settings.Repository(pluginRepository)));
                     } catch (InvalidRepositoryException e) {
                         // do nothing for now
                     }

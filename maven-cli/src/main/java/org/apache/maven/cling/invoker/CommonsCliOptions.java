@@ -19,10 +19,12 @@
 package org.apache.maven.cling.invoker;
 
 import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.DefaultParser;
@@ -89,7 +91,7 @@ public abstract class CommonsCliOptions implements Options {
 
     @Override
     public Optional<Boolean> verbose() {
-        if (commandLine.hasOption(CLIManager.VERBOSE) || commandLine.hasOption(CLIManager.DEBUG)) {
+        if (commandLine.hasOption(CLIManager.VERBOSE)) {
             return Optional.of(Boolean.TRUE);
         }
         return Optional.empty();
@@ -210,33 +212,39 @@ public abstract class CommonsCliOptions implements Options {
     }
 
     @Override
-    public void warnAboutDeprecatedOptions(ParserRequest request, PrintWriter printWriter) {
+    public void warnAboutDeprecatedOptions(ParserRequest request, Consumer<String> printWriter) {
         if (cliManager.getUsedDeprecatedOptions().isEmpty()) {
             return;
         }
-        printWriter.println("Detected deprecated option use in " + source);
+        printWriter.accept("Detected deprecated option use in " + source);
         for (Option option : cliManager.getUsedDeprecatedOptions()) {
             StringBuilder sb = new StringBuilder();
-            sb.append("The option -").append(option.getOpt());
+            sb.append("The option ");
+            if (option.getOpt() != null) {
+                sb.append("-").append(option.getOpt());
+            }
             if (option.getLongOpt() != null) {
-                sb.append(",--").append(option.getLongOpt());
+                if (option.getOpt() != null) {
+                    sb.append(",");
+                }
+                sb.append("--").append(option.getLongOpt());
             }
             sb.append(" is deprecated ");
             if (option.getDeprecated().isForRemoval()) {
                 sb.append("and will be removed in a future version");
             }
             if (option.getDeprecated().getSince() != null) {
-                sb.append("since ")
+                sb.append(" since ")
                         .append(request.commandName())
                         .append(" ")
                         .append(option.getDeprecated().getSince());
             }
-            printWriter.println(sb);
+            printWriter.accept(sb.toString());
         }
     }
 
     @Override
-    public void displayHelp(ParserRequest request, PrintWriter printStream) {
+    public void displayHelp(ParserRequest request, Consumer<String> printStream) {
         cliManager.displayHelp(request.command(), printStream);
     }
 
@@ -246,10 +254,6 @@ public abstract class CommonsCliOptions implements Options {
         public static final String SHOW_VERSION = "V";
         public static final String QUIET = "q";
         public static final String VERBOSE = "X";
-        /** This option is deprecated and may be repurposed as Java debug in a future version.
-         * Use {@code -X,--verbose} instead. */
-        @Deprecated
-        public static final String DEBUG = "debug";
 
         public static final String SHOW_ERRORS = "e";
         public static final String FAIL_ON_SEVERITY = "fos";
@@ -258,21 +262,25 @@ public abstract class CommonsCliOptions implements Options {
         public static final String FORCE_INTERACTIVE = "force-interactive";
         public static final String ALTERNATE_USER_SETTINGS = "s";
         public static final String ALTERNATE_PROJECT_SETTINGS = "ps";
-
-        @Deprecated
-        public static final String ALTERNATE_GLOBAL_SETTINGS = "gs";
-
         public static final String ALTERNATE_INSTALLATION_SETTINGS = "is";
         public static final String ALTERNATE_USER_TOOLCHAINS = "t";
-
-        @Deprecated
-        public static final String ALTERNATE_GLOBAL_TOOLCHAINS = "gt";
-
         public static final String ALTERNATE_INSTALLATION_TOOLCHAINS = "it";
         public static final String LOG_FILE = "l";
         public static final String RAW_STREAMS = "raw-streams";
         public static final String COLOR = "color";
         public static final String HELP = "h";
+
+        // parameters handled by script
+        public static final String DEBUG = "debug";
+        public static final String ENC = "enc";
+        public static final String YJP = "yjp";
+
+        // deprecated ones
+        @Deprecated
+        public static final String ALTERNATE_GLOBAL_SETTINGS = "gs";
+
+        @Deprecated
+        public static final String ALTERNATE_GLOBAL_TOOLCHAINS = "gt";
 
         protected org.apache.commons.cli.Options options;
         protected final LinkedHashSet<Option> usedDeprecatedOptions = new LinkedHashSet<>();
@@ -372,16 +380,21 @@ public abstract class CommonsCliOptions implements Options {
                     .desc("Defines the color mode of the output. Supported are 'auto', 'always', 'never'.")
                     .build());
 
-            // Deprecated
+            // Parameters handled by script
             options.addOption(Option.builder()
                     .longOpt(DEBUG)
-                    .desc("<deprecated> Produce execution verbose output.")
-                    .deprecated(DeprecatedAttributes.builder()
-                            .setForRemoval(true)
-                            .setSince("4.0.0")
-                            .setDescription("Use -X,--verbose instead.")
-                            .get())
+                    .desc("Launch the JVM in debug mode (script option).")
                     .build());
+            options.addOption(Option.builder()
+                    .longOpt(ENC)
+                    .desc("Launch the Maven Encryption tool (script option).")
+                    .build());
+            options.addOption(Option.builder()
+                    .longOpt(YJP)
+                    .desc("Launch the JVM with Yourkit profiler (script option).")
+                    .build());
+
+            // Deprecated
             options.addOption(Option.builder(ALTERNATE_GLOBAL_SETTINGS)
                     .longOpt("global-settings")
                     .desc("<deprecated> Alternate path for the global settings file.")
@@ -408,12 +421,16 @@ public abstract class CommonsCliOptions implements Options {
             // We need to eat any quotes surrounding arguments...
             String[] cleanArgs = CleanArgument.cleanArgs(args);
             DefaultParser parser = DefaultParser.builder()
-                    .setDeprecatedHandler(usedDeprecatedOptions::add)
+                    .setDeprecatedHandler(this::addDeprecatedOption)
                     .build();
             CommandLine commandLine = parser.parse(options, cleanArgs);
             // to trigger deprecation handler, so we can report deprecation BEFORE we actually use options
             options.getOptions().forEach(commandLine::hasOption);
             return commandLine;
+        }
+
+        protected void addDeprecatedOption(Option option) {
+            usedDeprecatedOptions.add(option);
         }
 
         public org.apache.commons.cli.Options getOptions() {
@@ -424,7 +441,7 @@ public abstract class CommonsCliOptions implements Options {
             return usedDeprecatedOptions;
         }
 
-        public void displayHelp(String command, PrintWriter pw) {
+        public void displayHelp(String command, Consumer<String> pw) {
             HelpFormatter formatter = new HelpFormatter();
 
             int width = MessageUtils.getTerminalWidth();
@@ -432,10 +449,12 @@ public abstract class CommonsCliOptions implements Options {
                 width = HelpFormatter.DEFAULT_WIDTH;
             }
 
-            pw.println();
+            pw.accept("");
 
+            StringWriter sw = new StringWriter();
+            PrintWriter pw2 = new PrintWriter(sw);
             formatter.printHelp(
-                    pw,
+                    pw2,
                     width,
                     commandLineSyntax(command),
                     System.lineSeparator() + "Options:",
@@ -444,8 +463,10 @@ public abstract class CommonsCliOptions implements Options {
                     HelpFormatter.DEFAULT_DESC_PAD,
                     System.lineSeparator(),
                     false);
-
-            pw.flush();
+            pw2.flush();
+            for (String s : sw.toString().split(System.lineSeparator())) {
+                pw.accept(s);
+            }
         }
 
         protected String commandLineSyntax(String command) {

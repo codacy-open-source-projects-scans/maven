@@ -564,40 +564,47 @@ public class DefaultModelBuilder implements ModelBuilder {
         // Infer inner reactor dependencies version
         //
         Model transformFileToRaw(Model model) {
-            List<Dependency> newDeps = new ArrayList<>();
-            boolean modified = false;
+            if (model.getDependencies().isEmpty()) {
+                return model;
+            }
+            List<Dependency> newDeps = new ArrayList<>(model.getDependencies().size());
+            boolean changed = false;
             for (Dependency dep : model.getDependencies()) {
+                Dependency newDep = null;
                 if (dep.getVersion() == null) {
-                    Dependency.Builder depBuilder = null;
-                    Model depModel = getRawModel(model.getPomFile(), dep.getGroupId(), dep.getArtifactId());
-                    if (depModel != null) {
-                        String version = depModel.getVersion();
-                        InputLocation versionLocation = depModel.getLocation("version");
-                        if (version == null && depModel.getParent() != null) {
-                            version = depModel.getParent().getVersion();
-                            versionLocation = depModel.getParent().getLocation("version");
-                        }
-                        depBuilder = Dependency.newBuilder(dep);
-                        depBuilder.version(version).location("version", versionLocation);
-                        if (dep.getGroupId() == null) {
-                            String depGroupId = depModel.getGroupId();
-                            InputLocation groupIdLocation = depModel.getLocation("groupId");
-                            if (depGroupId == null && depModel.getParent() != null) {
-                                depGroupId = depModel.getParent().getGroupId();
-                                groupIdLocation = depModel.getParent().getLocation("groupId");
-                            }
-                            depBuilder.groupId(depGroupId).location("groupId", groupIdLocation);
-                        }
-                    }
-                    if (depBuilder != null) {
-                        newDeps.add(depBuilder.build());
-                        modified = true;
-                    } else {
-                        newDeps.add(dep);
+                    newDep = inferDependencyVersion(model, dep);
+                    if (newDep != null) {
+                        changed = true;
                     }
                 }
+                newDeps.add(newDep == null ? dep : newDep);
             }
-            return modified ? model.withDependencies(newDeps) : model;
+            return changed ? model.withDependencies(newDeps) : model;
+        }
+
+        private Dependency inferDependencyVersion(Model model, Dependency dep) {
+            Model depModel = getRawModel(model.getPomFile(), dep.getGroupId(), dep.getArtifactId());
+            if (depModel == null) {
+                return null;
+            }
+            Dependency.Builder depBuilder = Dependency.newBuilder(dep);
+            String version = depModel.getVersion();
+            InputLocation versionLocation = depModel.getLocation("version");
+            if (version == null && depModel.getParent() != null) {
+                version = depModel.getParent().getVersion();
+                versionLocation = depModel.getParent().getLocation("version");
+            }
+            depBuilder.version(version).location("version", versionLocation);
+            if (dep.getGroupId() == null) {
+                String depGroupId = depModel.getGroupId();
+                InputLocation groupIdLocation = depModel.getLocation("groupId");
+                if (depGroupId == null && depModel.getParent() != null) {
+                    depGroupId = depModel.getParent().getGroupId();
+                    groupIdLocation = depModel.getParent().getLocation("groupId");
+                }
+                depBuilder.groupId(depGroupId).location("groupId", groupIdLocation);
+            }
+            return depBuilder.build();
         }
 
         String replaceCiFriendlyVersion(Map<String, String> properties, String version) {
@@ -1132,12 +1139,13 @@ public class DefaultModelBuilder implements ModelBuilder {
                 throw newModelBuilderException();
             }
 
-            inputModel = activateFileModel(inputModel);
-
             setRootModel(inputModel);
 
+            Model activatedFileModel = activateFileModel(inputModel);
+
             // profile activation
-            DefaultProfileActivationContext profileActivationContext = getProfileActivationContext(request, inputModel);
+            DefaultProfileActivationContext profileActivationContext =
+                    getProfileActivationContext(request, activatedFileModel);
 
             List<Profile> activeExternalProfiles = result.getActiveExternalProfiles();
 
@@ -1150,7 +1158,7 @@ public class DefaultModelBuilder implements ModelBuilder {
                 profileActivationContext.setUserProperties(profileProps);
             }
 
-            Model parentModel = readParent(inputModel);
+            Model parentModel = readParent(activatedFileModel);
             // Now that we have read the parent, we can set the relative
             // path correctly if it was not set in the input model
             if (inputModel.getParent() != null && inputModel.getParent().getRelativePath() == null) {
@@ -1741,7 +1749,7 @@ public class DefaultModelBuilder implements ModelBuilder {
                         try {
                             Map<String, String> map1 = context.getUserProperties();
                             Map<String, String> map2 = context.getSystemProperties();
-                            return interpolator.interpolate(s, Interpolator.chain(List.of(map1::get, map2::get)));
+                            return interpolator.interpolate(s, Interpolator.chain(map1::get, map2::get));
                         } catch (InterpolatorException e) {
                             problems.add(Severity.ERROR, Version.BASE, e.getMessage(), e);
                         }
@@ -1873,7 +1881,7 @@ public class DefaultModelBuilder implements ModelBuilder {
             Map<String, String> map1 = request.getSession().getUserProperties();
             Map<String, String> map2 = model.getProperties();
             Map<String, String> map3 = request.getSession().getSystemProperties();
-            Function<String, String> cb = Interpolator.chain(List.of(map1::get, map2::get, map3::get));
+            Function<String, String> cb = Interpolator.chain(map1::get, map2::get, map3::get);
             try {
                 String interpolated =
                         interpolator.interpolate(interpolatedModel.getParent().getVersion(), cb);
