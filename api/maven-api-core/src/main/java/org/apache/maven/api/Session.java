@@ -19,7 +19,6 @@
 package org.apache.maven.api;
 
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +32,7 @@ import org.apache.maven.api.annotations.ThreadSafe;
 import org.apache.maven.api.model.Repository;
 import org.apache.maven.api.services.ArtifactCoordinatesFactory;
 import org.apache.maven.api.services.DependencyCoordinatesFactory;
+import org.apache.maven.api.services.VersionResolverException;
 import org.apache.maven.api.settings.Settings;
 
 /**
@@ -45,7 +45,15 @@ import org.apache.maven.api.settings.Settings;
  */
 @Experimental
 @ThreadSafe
-public interface Session {
+public interface Session extends ProtoSession {
+
+    /**
+     * Returns the current maven version.
+     *
+     * @return the maven version, never {@code null}
+     */
+    @Nonnull
+    Version getMavenVersion();
 
     /**
      * Retrieves the settings for the current session.
@@ -80,25 +88,6 @@ public interface Session {
     SessionData getData();
 
     /**
-     * Returns immutable user properties to use for interpolation. The user properties have been configured directly
-     * by the user, e.g. via the {@code -Dkey=value} parameter on the command line.
-     *
-     * @return the user properties, never {@code null}
-     */
-    @Nonnull
-    Map<String, String> getUserProperties();
-
-    /**
-     * Returns immutable system properties to use for interpolation. The system properties are collected from the
-     * runtime environment such as {@link System#getProperties()} and environment variables
-     * (prefixed with {@code env.}).
-     *
-     * @return the system properties, never {@code null}
-     */
-    @Nonnull
-    Map<String, String> getSystemProperties();
-
-    /**
      * Each invocation computes a new map of effective properties. To be used in interpolation.
      * <p>
      * Effective properties are computed from system, user and optionally project properties, layered with
@@ -121,50 +110,11 @@ public interface Session {
     Map<String, String> getEffectiveProperties(@Nullable Project project);
 
     /**
-     * Returns the current maven version.
-     *
-     * @return the maven version, never {@code null}
-     */
-    @Nonnull
-    Version getMavenVersion();
-
-    /**
      * Returns the degree of concurrency for the build.
      *
      * @return  the degree of concurrency
      */
     int getDegreeOfConcurrency();
-
-    /**
-     * Returns the start time of the session.
-     *
-     * @return the start time as an Instant object, never {@code null}
-     */
-    @Nonnull
-    Instant getStartTime();
-
-    /**
-     * Gets the directory of the topmost project being built, usually the current directory or the
-     * directory pointed at by the {@code -f/--file} command line argument.
-     *
-     * @return the directory of the topmost project, never {@code null}
-     * @see Project#isTopProject()
-     * @see #getRootDirectory()
-     */
-    @Nonnull
-    Path getTopDirectory();
-
-    /**
-     * Gets the root directory of the session, which is the root directory for the top directory project.
-     *
-     * @return the root directory, never {@code null}
-     * @throws IllegalStateException if the root directory could not be found
-     * @see #getTopDirectory()
-     * @see Project#getRootDirectory()
-     * @see Project#isRootProject()
-     */
-    @Nonnull
-    Path getRootDirectory();
 
     /**
      * Retrieves a list of projects associated with the session.
@@ -521,7 +471,7 @@ public interface Session {
      *
      * @see org.apache.maven.api.services.ArtifactInstaller#install(Session, Collection)
      */
-    void installArtifacts(@Nonnull Artifact... artifacts);
+    void installArtifacts(@Nonnull ProducedArtifact... artifacts);
 
     /**
      * Shortcut for {@code getService(ArtifactInstaller.class).install(...)}.
@@ -531,7 +481,7 @@ public interface Session {
      *
      * @see org.apache.maven.api.services.ArtifactInstaller#install(Session, Collection)
      */
-    void installArtifacts(@Nonnull Collection<Artifact> artifacts);
+    void installArtifacts(@Nonnull Collection<ProducedArtifact> artifacts);
 
     /**
      * Shortcut for {@code getService(ArtifactDeployer.class).deploy(...)}.
@@ -542,7 +492,7 @@ public interface Session {
      *
      * @see org.apache.maven.api.services.ArtifactDeployer#deploy(Session, RemoteRepository, Collection)
      */
-    void deployArtifact(@Nonnull RemoteRepository repository, @Nonnull Artifact... artifacts);
+    void deployArtifact(@Nonnull RemoteRepository repository, @Nonnull ProducedArtifact... artifacts);
 
     /**
      * Shortcut for {@code getService(ArtifactManager.class).setPath(...)}.
@@ -742,7 +692,7 @@ public interface Session {
      * @see org.apache.maven.api.services.VersionResolver#resolve(Session, ArtifactCoordinates) (String)
      */
     @Nonnull
-    Version resolveVersion(@Nonnull ArtifactCoordinates artifact);
+    Version resolveVersion(@Nonnull ArtifactCoordinates artifact) throws VersionResolverException;
 
     /**
      * Expands a version range to a list of matching versions, in ascending order.
@@ -758,7 +708,7 @@ public interface Session {
      * @see org.apache.maven.api.services.VersionRangeResolver#resolve(Session, ArtifactCoordinates) (String)
      */
     @Nonnull
-    List<Version> resolveVersionRange(@Nonnull ArtifactCoordinates artifact);
+    List<Version> resolveVersionRange(@Nonnull ArtifactCoordinates artifact) throws VersionResolverException;
 
     /**
      * Expands a version range to a list of matching versions, in ascending order.
@@ -775,7 +725,8 @@ public interface Session {
      * @see org.apache.maven.api.services.VersionRangeResolver#resolve(Session, ArtifactCoordinates) (String)
      */
     @Nonnull
-    List<Version> resolveVersionRange(@Nonnull ArtifactCoordinates artifact, List<RemoteRepository> repositories);
+    List<Version> resolveVersionRange(@Nonnull ArtifactCoordinates artifact, List<RemoteRepository> repositories)
+            throws VersionResolverException;
 
     /**
      * Parses the specified version string, for example "1.0".

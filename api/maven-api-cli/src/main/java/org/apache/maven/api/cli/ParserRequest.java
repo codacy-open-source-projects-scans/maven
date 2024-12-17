@@ -46,12 +46,6 @@ import static java.util.Objects.requireNonNull;
 @Immutable
 @Experimental
 public interface ParserRequest {
-    String MVN_CMD = "mvn";
-    String MVN_NAME = "Maven";
-
-    String MVNENC_CMD = "mvnenc";
-    String MVNENC_NAME = "Maven Password Encrypting Tool";
-
     /**
      * Returns the Maven command to be executed. This command is used in some invokers (ie forked) but also to
      * present help to user.
@@ -66,6 +60,7 @@ public interface ParserRequest {
      *
      * @return the command (human) name
      */
+    @Nonnull
     String commandName();
 
     /**
@@ -179,7 +174,7 @@ public interface ParserRequest {
     @Nonnull
     static Builder mvn(
             @Nonnull List<String> args, @Nonnull Logger logger, @Nonnull MessageBuilderFactory messageBuilderFactory) {
-        return builder(MVN_CMD, MVN_NAME, args, logger, messageBuilderFactory);
+        return builder(Tools.MVN_CMD, Tools.MVN_NAME, args, logger, messageBuilderFactory);
     }
 
     /**
@@ -207,7 +202,35 @@ public interface ParserRequest {
     @Nonnull
     static Builder mvnenc(
             @Nonnull List<String> args, @Nonnull Logger logger, @Nonnull MessageBuilderFactory messageBuilderFactory) {
-        return builder(MVNENC_CMD, MVNENC_NAME, args, logger, messageBuilderFactory);
+        return builder(Tools.MVNENC_CMD, Tools.MVNENC_NAME, args, logger, messageBuilderFactory);
+    }
+
+    /**
+     * Creates a new Builder instance for constructing a Maven Shell Tool ParserRequest.
+     *
+     * @param args the command-line arguments
+     * @param logger the logger to be used during parsing
+     * @param messageBuilderFactory the factory for creating message builders
+     * @return a new Builder instance
+     */
+    @Nonnull
+    static Builder mvnsh(
+            @Nonnull String[] args, @Nonnull Logger logger, @Nonnull MessageBuilderFactory messageBuilderFactory) {
+        return mvnsh(Arrays.asList(args), logger, messageBuilderFactory);
+    }
+
+    /**
+     * Creates a new Builder instance for constructing a Maven Shell Tool ParserRequest.
+     *
+     * @param args the command-line arguments
+     * @param logger the logger to be used during parsing
+     * @param messageBuilderFactory the factory for creating message builders
+     * @return a new Builder instance
+     */
+    @Nonnull
+    static Builder mvnsh(
+            @Nonnull List<String> args, @Nonnull Logger logger, @Nonnull MessageBuilderFactory messageBuilderFactory) {
+        return builder(Tools.MVNSHELL_CMD, Tools.MVNSHELL_NAME, args, logger, messageBuilderFactory);
     }
 
     /**

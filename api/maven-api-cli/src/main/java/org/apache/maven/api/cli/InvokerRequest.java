@@ -33,42 +33,19 @@ import org.apache.maven.api.services.Lookup;
 import org.apache.maven.api.services.MessageBuilderFactory;
 
 /**
- * Represents a Maven execution request, encapsulating all necessary information
- * for invoking a Maven build or command.
- *
- * @param <O> the type of {@link Options} used for this request, extending the base {@link Options} interface
+ * Represents a Maven invocation request, encapsulating all necessary information
+ * for invoking a Maven build or command. Arguments are parsed and exposed via methods.
  *
  * @since 4.0.0
  */
 @Immutable
 @Experimental
-public interface InvokerRequest<O extends Options> {
+public interface InvokerRequest {
     /**
      * The parser request this instance was created from.
      */
     @Nonnull
     ParserRequest parserRequest();
-
-    /**
-     * Shorthand for {@link Logger} to use.
-     */
-    default Logger logger() {
-        return parserRequest().logger();
-    }
-
-    /**
-     * Shorthand for {@link MessageBuilderFactory}.
-     */
-    default MessageBuilderFactory messageBuilderFactory() {
-        return parserRequest().messageBuilderFactory();
-    }
-
-    /**
-     * Shorthand for {@link Lookup}.
-     */
-    default Lookup lookup() {
-        return parserRequest().lookup();
-    }
 
     /**
      * Returns the current working directory for the Maven execution.
@@ -96,6 +73,37 @@ public interface InvokerRequest<O extends Options> {
      */
     @Nonnull
     Path userHomeDirectory();
+
+    /**
+     * Returns the list of extra JVM arguments to be passed to the forked process.
+     * These arguments allow for customization of the JVM environment in which tool will run.
+     * This property is used ONLY by executors and invokers that spawn a new JVM.
+     *
+     * @return an Optional containing the list of extra JVM arguments, or empty if not specified
+     */
+    @Nonnull
+    Optional<List<String>> jvmArguments();
+
+    /**
+     * Shorthand for {@link Logger} to use.
+     */
+    default Logger logger() {
+        return parserRequest().logger();
+    }
+
+    /**
+     * Shorthand for {@link MessageBuilderFactory}.
+     */
+    default MessageBuilderFactory messageBuilderFactory() {
+        return parserRequest().messageBuilderFactory();
+    }
+
+    /**
+     * Shorthand for {@link Lookup}.
+     */
+    default Lookup lookup() {
+        return parserRequest().lookup();
+    }
 
     /**
      * Returns a map of user-defined properties for the Maven execution.
@@ -172,5 +180,5 @@ public interface InvokerRequest<O extends Options> {
      * @return the options object
      */
     @Nonnull
-    O options();
+    Options options();
 }

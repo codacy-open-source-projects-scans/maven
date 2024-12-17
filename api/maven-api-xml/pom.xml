@@ -23,7 +23,7 @@
   <parent>
     <groupId>org.apache.maven</groupId>
     <artifactId>maven-api</artifactId>
-    <version>4.0.0-beta-6-SNAPSHOT</version>
+    <version>4.0.0-rc-3-SNAPSHOT</version>
   </parent>
 
   <artifactId>maven-api-xml</artifactId>
@@ -33,7 +33,7 @@
   <dependencies>
     <dependency>
       <groupId>org.apache.maven</groupId>
-      <artifactId>maven-api-meta</artifactId>
+      <artifactId>maven-api-annotations</artifactId>
     </dependency>
   </dependencies>
 

@@ -23,7 +23,7 @@ under the License.
   <parent>
     <groupId>org.apache.maven</groupId>
     <artifactId>maven</artifactId>
-    <version>4.0.0-beta-6-SNAPSHOT</version>
+    <version>4.0.0-rc-3-SNAPSHOT</version>
   </parent>
 
   <artifactId>apache-maven</artifactId>
@@ -31,10 +31,6 @@ under the License.
 
   <name>Apache Maven Distribution</name>
   <description>The Apache Maven distribution, source and binary, in zip and tar.gz formats.</description>
-
-  <properties>
-    <distributionFileName>${distributionId}-${project.version}</distributionFileName>
-  </properties>
 
   <dependencies>
     <dependency>
@@ -114,6 +110,16 @@ under the License.
       <artifactId>jline-terminal-ffm</artifactId>
     </dependency>
 
+    <!-- (legacy) DI annotations -->
+    <dependency>
+      <groupId>javax.inject</groupId>
+      <artifactId>javax.inject</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>javax.annotation</groupId>
+      <artifactId>javax.annotation-api</artifactId>
+    </dependency>
+
     <!-- DI Runtime -->
     <dependency>
       <groupId>org.eclipse.sisu</groupId>
@@ -135,9 +141,16 @@ under the License.
     </dependency>
 
     <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-api</artifactId>
+      <groupId>org.apache.maven.resolver</groupId>
+      <artifactId>maven-resolver-tools</artifactId>
+      <version>${resolverVersion}</version>
       <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>org.slf4j</groupId>
+          <artifactId>slf4j-nop</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
   </dependencies>
 
@@ -155,7 +168,6 @@ under the License.
   </pluginRepositories>
 
   <build>
-    <finalName>${distributionFileName}</finalName>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -223,7 +235,7 @@ under the License.
       <plugin>
         <groupId>eu.maveniverse.maven.plugins</groupId>
         <artifactId>bom-builder3</artifactId>
-        <version>1.0.2</version>
+        <version>1.0.3</version>
         <executions>
           <execution>
             <id>skinny-bom</id>
@@ -252,6 +264,38 @@ under the License.
               <useDependencies>PROJECT_AND_TRANSITIVE</useDependencies>
               <usePropertiesForVersion>true</usePropertiesForVersion>
               <attach>true</attach>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.5.0</version>
+        <executions>
+          <execution>
+            <id>render-configuration-page</id>
+            <goals>
+              <goal>java</goal>
+            </goals>
+            <phase>verify</phase>
+            <configuration>
+              <classpathScope>test</classpathScope>
+              <additionalClasspathElements>
+                <additionalClasspathElement>${basedir}/src/test/resources</additionalClasspathElement>
+              </additionalClasspathElements>
+              <mainClass>org.eclipse.aether.tools.CollectConfiguration</mainClass>
+              <arguments>
+                <argument>--mode=maven</argument>
+                <!--
+                TODO: templates are loaded from classpath, in "normal" JAR project local template would override docgen one,
+                but in this case the packaging=pom all I could do is use additionalClasspathElement that APPENDS classpath,
+                hence template is renamed to maven-configuration.md.vm, to avoid conflict (and picking up resolver template)
+                -->
+                <argument>--templates=maven-configuration.md,configuration.properties,configuration.yaml</argument>
+                <argument>${basedir}/..</argument>
+                <argument>${basedir}/../src/site/markdown/</argument>
+              </arguments>
             </configuration>
           </execution>
         </executions>
@@ -304,6 +348,34 @@ under the License.
                   <appendAssemblyId>false</appendAssemblyId>
                   <attach>false</attach>
                   <outputDirectory>${distributionTargetDir}</outputDirectory>
+                  <descriptors>
+                    <descriptor>src/assembly/dir.xml</descriptor>
+                  </descriptors>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <profile>
+      <id>run-its</id>
+      <build>
+        <plugins>
+          <plugin>
+            <artifactId>maven-assembly-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>create-distribution-dir</id>
+                <goals>
+                  <goal>single</goal>
+                </goals>
+                <phase>package</phase>
+                <configuration>
+                  <finalName>./</finalName>
+                  <appendAssemblyId>false</appendAssemblyId>
+                  <attach>false</attach>
+                  <outputDirectory>${basedir}/target/maven</outputDirectory>
                   <descriptors>
                     <descriptor>src/assembly/dir.xml</descriptor>
                   </descriptors>
