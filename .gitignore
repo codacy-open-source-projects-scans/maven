@@ -1,0 +1,23 @@
+**/target/**
+.project
+.classpath
+.settings/
+.svn/
+
+# Intellij
+*.ipr
+*.iml
+.idea
+!.idea/icon.png
+/bootstrap
+/dependencies.xml
+.java-version
+.checkstyle
+.factorypath
+
+# VSCode
+.vscode/
+
+# Mac
+.DS_Store
+
