@@ -100,6 +100,7 @@ public abstract class AbstractStringBasedModelInterpolator extends AbstractLogEn
 
     protected AbstractStringBasedModelInterpolator() {}
 
+    @Override
     public Model interpolate(Model model, Map<String, ?> context) throws ModelInterpolationException {
         return interpolate(model, context, true);
     }
@@ -118,6 +119,7 @@ public abstract class AbstractStringBasedModelInterpolator extends AbstractLogEn
      * @deprecated Use {@link ModelInterpolator#interpolate(Model, File, ProjectBuilderConfiguration, boolean)} instead.
      */
     @Deprecated
+    @Override
     public Model interpolate(Model model, Map<String, ?> context, boolean strict) throws ModelInterpolationException {
         Properties props = new Properties();
         props.putAll(context);
@@ -125,6 +127,7 @@ public abstract class AbstractStringBasedModelInterpolator extends AbstractLogEn
         return interpolate(model, null, new DefaultProjectBuilderConfiguration().setExecutionProperties(props), true);
     }
 
+    @Override
     public Model interpolate(Model model, File projectDir, ProjectBuilderConfiguration config, boolean debugEnabled)
             throws ModelInterpolationException {
         StringWriter sWriter = new StringWriter(1024);
@@ -164,6 +167,7 @@ public abstract class AbstractStringBasedModelInterpolator extends AbstractLogEn
      *   <li>If the value is null, get it from the model properties.</li>
      * </ul>
      */
+    @Override
     public String interpolate(
             String src, Model model, final File projectDir, ProjectBuilderConfiguration config, boolean debug)
             throws ModelInterpolationException {
@@ -192,6 +196,7 @@ public abstract class AbstractStringBasedModelInterpolator extends AbstractLogEn
         ValueSource basedirValueSource = new PrefixedValueSourceWrapper(
                 new AbstractValueSource(false) {
 
+                    @Override
                     public Object getValue(String expression) {
                         if (projectDir != null && "basedir".equals(expression)) {
                             return projectDir.getAbsolutePath();
@@ -204,6 +209,7 @@ public abstract class AbstractStringBasedModelInterpolator extends AbstractLogEn
         ValueSource baseUriValueSource = new PrefixedValueSourceWrapper(
                 new AbstractValueSource(false) {
 
+                    @Override
                     public Object getValue(String expression) {
                         if (projectDir != null && "baseUri".equals(expression)) {
                             return projectDir.getAbsoluteFile().toPath().toUri().toASCIIString();
@@ -226,6 +232,7 @@ public abstract class AbstractStringBasedModelInterpolator extends AbstractLogEn
         valueSources.add(new MapBasedValueSource(config.getExecutionProperties()));
         valueSources.add(new AbstractValueSource(false) {
 
+            @Override
             public Object getValue(String expression) {
                 return config.getExecutionProperties().getProperty("env." + expression);
             }
@@ -237,7 +244,7 @@ public abstract class AbstractStringBasedModelInterpolator extends AbstractLogEn
 
     protected List<InterpolationPostProcessor> createPostProcessors(
             final Model model, final File projectDir, final ProjectBuilderConfiguration config) {
-        return Collections.singletonList((InterpolationPostProcessor) new PathTranslatingPostProcessor(
+        return Collections.singletonList(new PathTranslatingPostProcessor(
                 PROJECT_PREFIXES, TRANSLATED_PATH_EXPRESSIONS, projectDir, pathTranslator));
     }
 
@@ -275,11 +282,11 @@ public abstract class AbstractStringBasedModelInterpolator extends AbstractLogEn
 
                         Object last = null;
                         for (Object next : feedback) {
-                            if (next instanceof Throwable) {
+                            if (next instanceof Throwable throwable) {
                                 if (last == null) {
-                                    logger.debug("", ((Throwable) next));
+                                    logger.debug("", throwable);
                                 } else {
-                                    logger.debug(String.valueOf(last), ((Throwable) next));
+                                    logger.debug(String.valueOf(last), throwable);
                                 }
                             } else {
                                 if (last != null) {
@@ -321,6 +328,7 @@ public abstract class AbstractStringBasedModelInterpolator extends AbstractLogEn
 
     protected abstract Interpolator createInterpolator();
 
+    @Override
     public void initialize() throws InitializationException {
         interpolator = createInterpolator();
         recursionInterceptor = new PrefixAwareRecursionInterceptor(PROJECT_PREFIXES);

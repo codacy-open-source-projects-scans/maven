@@ -18,24 +18,34 @@
  */
 package org.apache.maven.cling.invoker.mvn;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+import eu.maveniverse.maven.mimir.testing.MimirInfuser;
 import org.apache.maven.api.cli.Invoker;
+import org.apache.maven.api.cli.InvokerException;
 import org.apache.maven.api.cli.Parser;
 import org.apache.maven.api.cli.ParserRequest;
-import org.apache.maven.cling.invoker.ProtoLogger;
 import org.apache.maven.jline.JLineMessageBuilderFactory;
-import org.junit.jupiter.api.Assumptions;
+import org.codehaus.plexus.classworlds.ClassWorld;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public abstract class MavenInvokerTestSupport {
-    public static final String POM_STRING =
-            """
+    static {
+        System.setProperty(
+                "library.jline.path",
+                Path.of("target/dependency/org/jline/nativ").toAbsolutePath().toString());
+    }
+
+    public static final String POM_STRING = """
                 <?xml version="1.0" encoding="UTF-8"?>
                 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/maven-v4_0_0.xsd">
@@ -69,8 +79,7 @@ public abstract class MavenInvokerTestSupport {
                 </project>
                 """;
 
-    public static final String APP_JAVA_STRING =
-            """
+    public static final String APP_JAVA_STRING = """
             package org.apache.maven.samples.sample;
 
             public class App {
@@ -80,39 +89,77 @@ public abstract class MavenInvokerTestSupport {
             }
             """;
 
-    protected void invoke(Path cwd, Collection<String> goals) throws Exception {
-        // works only in recent Maven4
-        Assumptions.assumeTrue(
-                Files.isRegularFile(Paths.get(System.getProperty("maven.home"))
-                        .resolve("conf")
-                        .resolve("maven.properties")),
-                "${maven.home}/conf/maven.properties must be a file");
-
-        Files.createDirectory(cwd.resolve(".mvn"));
+    protected Map<String, String> invoke(Path cwd, Path userHome, Collection<String> goals, Collection<String> args)
+            throws Exception {
+        Files.createDirectories(cwd.resolve(".mvn"));
         Path pom = cwd.resolve("pom.xml").toAbsolutePath();
         Files.writeString(pom, POM_STRING);
         Path appJava = cwd.resolve("src/main/java/org/apache/maven/samples/sample/App.java");
         Files.createDirectories(appJava.getParent());
         Files.writeString(appJava, APP_JAVA_STRING);
 
+        if (MimirInfuser.isMimirPresentUW()) {
+            MimirInfuser.doInfuseUW(userHome);
+            MimirInfuser.preseedItselfIntoInnerUserHome(userHome);
+        }
+
+        HashMap<String, String> logs = new HashMap<>();
         Parser parser = createParser();
-        try (Invoker invoker = createInvoker()) {
+        try (ClassWorld classWorld = createClassWorld();
+                Invoker invoker = createInvoker(classWorld)) {
             for (String goal : goals) {
-                Path logFile = cwd.resolve(goal + "-build.log").toAbsolutePath();
-                int exitCode = invoker.invoke(parser.parseInvocation(ParserRequest.mvn(
-                                List.of("-l", logFile.toString(), goal),
-                                new ProtoLogger(),
-                                new JLineMessageBuilderFactory())
-                        .cwd(cwd)
-                        .build()));
-                String log = Files.readString(logFile);
-                System.out.println(log);
-                assertEquals(0, exitCode, log);
+                ByteArrayOutputStream stdout = new ByteArrayOutputStream();
+                ByteArrayOutputStream stderr = new ByteArrayOutputStream();
+                List<String> mvnArgs = new ArrayList<>(args);
+                mvnArgs.add("-Daether.remoteRepositoryFilter.prefixes=false");
+                mvnArgs.add(goal);
+                int exitCode = -1;
+                Exception exception = null;
+                try {
+                    exitCode = invoker.invoke(
+                            parser.parseInvocation(ParserRequest.mvn(mvnArgs, new JLineMessageBuilderFactory())
+                                    .cwd(cwd)
+                                    .userHome(userHome)
+                                    .stdOut(stdout)
+                                    .stdErr(stderr)
+                                    .embedded(true)
+                                    .build()));
+                } catch (InvokerException.ExitException e) {
+                    exitCode = e.getExitCode();
+                    exception = e;
+                } catch (Exception e) {
+                    exception = e;
+                }
+
+                // dump things out
+                System.out.println("===================================================");
+                System.out.println("args: " + Arrays.toString(mvnArgs.toArray()));
+                System.out.println("===================================================");
+                System.out.println("stdout: " + stdout);
+                System.out.println("===================================================");
+
+                System.err.println("===================================================");
+                System.err.println("args: " + Arrays.toString(mvnArgs.toArray()));
+                System.err.println("===================================================");
+                System.err.println("stderr: " + stderr);
+                System.err.println("===================================================");
+
+                logs.put(goal, stdout.toString());
+                if (exception != null) {
+                    throw exception;
+                } else {
+                    assertEquals(0, exitCode, "OUT:" + stdout + "\nERR:" + stderr);
+                }
             }
         }
+        return logs;
     }
 
-    protected abstract Invoker createInvoker();
+    protected ClassWorld createClassWorld() {
+        return new ClassWorld("plexus.core", ClassLoader.getSystemClassLoader());
+    }
+
+    protected abstract Invoker createInvoker(ClassWorld classWorld);
 
     protected abstract Parser createParser();
 }

@@ -22,7 +22,7 @@ package org.apache.maven.model.building;
  * Assists in firing events from a generic method by abstracting from the actual callback method to be called on the
  * listener.
  *
- * @deprecated use {@link org.apache.maven.api.services.ModelBuilder} instead
+ * @deprecated use {@code org.apache.maven.api.services.ModelBuilder} instead
  */
 @Deprecated(since = "4.0.0")
 interface ModelBuildingEventCatapult {
@@ -35,5 +35,10 @@ interface ModelBuildingEventCatapult {
      */
     void fire(ModelBuildingListener listener, ModelBuildingEvent event);
 
-    ModelBuildingEventCatapult BUILD_EXTENSIONS_ASSEMBLED = ModelBuildingListener::buildExtensionsAssembled;
+    ModelBuildingEventCatapult BUILD_EXTENSIONS_ASSEMBLED = new ModelBuildingEventCatapult() {
+        @Override
+        public void fire(ModelBuildingListener listener, ModelBuildingEvent event) {
+            listener.buildExtensionsAssembled(event);
+        }
+    };
 }

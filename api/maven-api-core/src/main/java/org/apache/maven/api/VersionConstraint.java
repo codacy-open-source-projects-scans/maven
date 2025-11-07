@@ -62,9 +62,9 @@ public interface VersionConstraint {
     boolean contains(@Nonnull Version version);
 
     /**
-     * Returns a string representation of this version constraint
-     * @return the string representation of this version constraint
+     * {@return the string representation of this version}
      */
     @Nonnull
-    String asString();
+    @Override
+    String toString();
 }

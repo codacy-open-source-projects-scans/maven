@@ -40,12 +40,28 @@ import static java.util.Objects.requireNonNull;
  * @see <a href="https://github.com/maveniverse/toolbox">Maveniverse Toolbox</a>
  */
 public class ToolboxTool implements ExecutorTool {
-    private static final String TOOLBOX = "eu.maveniverse.maven.plugins:toolbox:0.5.2:";
+    private static final String TOOLBOX_PREFIX = "eu.maveniverse.maven.plugins:toolbox:";
 
     private final ExecutorHelper helper;
+    private final String toolboxVersion;
+    private final ExecutorHelper.Mode forceMode;
 
+    /**
+     * @deprecated Better specify required version yourself. This one is "cemented" to 0.13.7
+     */
+    @Deprecated
     public ToolboxTool(ExecutorHelper helper) {
+        this(helper, "0.13.7");
+    }
+
+    public ToolboxTool(ExecutorHelper helper, String toolboxVersion) {
+        this(helper, toolboxVersion, null);
+    }
+
+    public ToolboxTool(ExecutorHelper helper, String toolboxVersion, ExecutorHelper.Mode forceMode) {
         this.helper = requireNonNull(helper);
+        this.toolboxVersion = requireNonNull(toolboxVersion);
+        this.forceMode = forceMode; // nullable
     }
 
     @Override
@@ -54,12 +70,13 @@ public class ToolboxTool implements ExecutorTool {
         ByteArrayOutputStream stderr = new ByteArrayOutputStream();
         ExecutorRequest.Builder builder = mojo(executorRequest, "gav-dump")
                 .argument("-DasProperties")
-                .stdoutConsumer(stdout)
-                .stderrConsumer(stderr);
+                .stdOut(stdout)
+                .stdErr(stderr);
         doExecute(builder);
         try {
             Properties properties = new Properties();
-            properties.load(new ByteArrayInputStream(stdout.toByteArray()));
+            properties.load(new ByteArrayInputStream(
+                    validateOutput(false, stdout, stderr).getBytes()));
             return properties.entrySet().stream()
                     .collect(Collectors.toMap(
                             e -> String.valueOf(e.getKey()),
@@ -76,10 +93,10 @@ public class ToolboxTool implements ExecutorTool {
         ByteArrayOutputStream stdout = new ByteArrayOutputStream();
         ByteArrayOutputStream stderr = new ByteArrayOutputStream();
         ExecutorRequest.Builder builder = mojo(executorRequest, "gav-local-repository-path")
-                .stdoutConsumer(stdout)
-                .stderrConsumer(stderr);
+                .stdOut(stdout)
+                .stdErr(stderr);
         doExecute(builder);
-        return shaveStdout(stdout);
+        return validateOutput(true, stdout, stderr);
     }
 
     @Override
@@ -89,13 +106,13 @@ public class ToolboxTool implements ExecutorTool {
         ByteArrayOutputStream stderr = new ByteArrayOutputStream();
         ExecutorRequest.Builder builder = mojo(executorRequest, "gav-artifact-path")
                 .argument("-Dgav=" + gav)
-                .stdoutConsumer(stdout)
-                .stderrConsumer(stderr);
+                .stdOut(stdout)
+                .stdErr(stderr);
         if (repositoryId != null) {
             builder.argument("-Drepository=" + repositoryId + "::unimportant");
         }
         doExecute(builder);
-        return shaveStdout(stdout);
+        return validateOutput(true, stdout, stderr);
     }
 
     @Override
@@ -105,33 +122,49 @@ public class ToolboxTool implements ExecutorTool {
         ByteArrayOutputStream stderr = new ByteArrayOutputStream();
         ExecutorRequest.Builder builder = mojo(executorRequest, "gav-metadata-path")
                 .argument("-Dgav=" + gav)
-                .stdoutConsumer(stdout)
-                .stderrConsumer(stderr);
+                .stdOut(stdout)
+                .stdErr(stderr);
         if (repositoryId != null) {
             builder.argument("-Drepository=" + repositoryId + "::unimportant");
         }
         doExecute(builder);
-        return shaveStdout(stdout);
+        return validateOutput(true, stdout, stderr);
     }
 
     private ExecutorRequest.Builder mojo(ExecutorRequest.Builder builder, String mojo) {
         if (helper.mavenVersion().startsWith("4.")) {
             builder.argument("--raw-streams");
         }
-        return builder.argument(TOOLBOX + mojo).argument("--quiet").argument("-DforceStdout");
+        return builder.argument(TOOLBOX_PREFIX + toolboxVersion + ":" + mojo)
+                .argument("--quiet")
+                .argument("-DforceStdout");
     }
 
     private void doExecute(ExecutorRequest.Builder builder) {
         ExecutorRequest request = builder.build();
-        int ec = helper.execute(request);
+        int ec = forceMode == null ? helper.execute(request) : helper.execute(forceMode, request);
         if (ec != 0) {
             throw new ExecutorException("Unexpected exit code=" + ec + "; stdout="
-                    + request.stdoutConsumer().orElse(null) + "; stderr="
-                    + request.stderrConsumer().orElse(null));
+                    + request.stdOut().orElse(null) + "; stderr="
+                    + request.stdErr().orElse(null));
         }
     }
 
-    private String shaveStdout(ByteArrayOutputStream stdout) {
-        return stdout.toString().replace("\n", "").replace("\r", "");
+    /**
+     * Performs "sanity check" for output, making sure no insane values like empty strings are returned.
+     */
+    private String validateOutput(boolean shave, ByteArrayOutputStream stdout, ByteArrayOutputStream stderr) {
+        String result = stdout.toString();
+        if (shave) {
+            result = result.replace("\n", "").replace("\r", "");
+        }
+        // sanity checks: stderr has any OR result is empty string (no method should emit empty string)
+        if (result.trim().isEmpty()) {
+            // see bug https://github.com/apache/maven/pull/11303 Fail in this case
+            // tl;dr We NEVER expect empty string as output from this tool; so fail here instead to chase ghosts
+            throw new IllegalStateException("Empty output from Toolbox; stdout[" + stdout.size() + "]=" + stdout
+                    + "; stderr[" + stderr.size() + "]=" + stderr);
+        }
+        return result;
     }
 }

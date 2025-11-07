@@ -46,10 +46,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class MavenITmng0768OfflineModeTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng0768OfflineModeTest() {
-        super(ALL_MAVEN_VERSIONS);
-    }
-
     /**
      * Test offline mode.
      *
@@ -74,7 +70,7 @@ public class MavenITmng0768OfflineModeTest extends AbstractMavenIntegrationTestC
                 response.setStatus(HttpServletResponse.SC_OK);
 
                 if (request.getRequestURI().endsWith(".pom")) {
-                    writer.println("<project>");
+                    writer.println("<project xmlns=\"http://maven.apache.org/POM/4.0.0\">");
                     writer.println("  <modelVersion>4.0.0</modelVersion>");
                     writer.println("  <groupId>org.apache.maven.its.mng0768</groupId>");
                     writer.println("  <artifactId>dep</artifactId>");
@@ -102,64 +98,58 @@ public class MavenITmng0768OfflineModeTest extends AbstractMavenIntegrationTestC
 
             int port = ((NetworkConnector) server.getConnectors()[0]).getLocalPort();
 
-            {
-                // phase 1: run build in online mode to fill local repo
-                Verifier verifier = newVerifier(testDir.getAbsolutePath());
-                verifier.setAutoclean(false);
-                verifier.deleteDirectory("target");
-                verifier.deleteArtifacts("org.apache.maven.its.mng0768");
-                verifier.setLogFileName("log1.txt");
-                Map<String, String> props = Map.of("@port@", Integer.toString(port));
-                verifier.filterFile("settings-template.xml", "settings.xml", props);
-                verifier.addCliArgument("--settings");
-                verifier.addCliArgument("settings.xml");
-                verifier.addCliArgument(
-                        "org.apache.maven.its.plugins:maven-it-plugin-dependency-resolution:2.1-SNAPSHOT:compile");
-                verifier.execute();
-                verifier.verifyFilePresent("target/compile.txt");
-                verifier.verifyErrorFreeLog();
-            }
+            // phase 1: run build in online mode to fill local repo
+            Verifier verifier = newVerifier(testDir.getAbsolutePath());
+            verifier.setAutoclean(false);
+            verifier.deleteDirectory("target");
+            verifier.deleteArtifacts("org.apache.maven.its.mng0768");
+            verifier.setLogFileName("log1.txt");
+            Map<String, String> props = Map.of("@port@", Integer.toString(port));
+            verifier.filterFile("settings-template.xml", "settings.xml", props);
+            verifier.addCliArgument("--settings");
+            verifier.addCliArgument("settings.xml");
+            verifier.addCliArgument(
+                    "org.apache.maven.its.plugins:maven-it-plugin-dependency-resolution:2.1-SNAPSHOT:compile");
+            verifier.execute();
+            verifier.verifyFilePresent("target/compile.txt");
+            verifier.verifyErrorFreeLog();
 
             requestedUris.clear();
 
-            {
-                // phase 2: run build in offline mode to check it still passes, without network accesses
-                Verifier verifier = newVerifier(testDir.getAbsolutePath());
-                verifier.setAutoclean(false);
-                verifier.deleteDirectory("target");
-                verifier.addCliArgument("-o");
-                verifier.addCliArgument("--settings");
-                verifier.addCliArgument("settings.xml");
-                verifier.setLogFileName("log2.txt");
-                verifier.addCliArgument(
-                        "org.apache.maven.its.plugins:maven-it-plugin-dependency-resolution:2.1-SNAPSHOT:compile");
-                verifier.execute();
-                verifier.verifyFilePresent("target/compile.txt");
-                verifier.verifyErrorFreeLog();
-            }
+            // phase 2: run build in offline mode to check it still passes, without network accesses
+            verifier = newVerifier(testDir.getAbsolutePath());
+            verifier.setAutoclean(false);
+            verifier.deleteDirectory("target");
+            verifier.addCliArgument("-o");
+            verifier.addCliArgument("--settings");
+            verifier.addCliArgument("settings.xml");
+            verifier.setLogFileName("log2.txt");
+            verifier.addCliArgument(
+                    "org.apache.maven.its.plugins:maven-it-plugin-dependency-resolution:2.1-SNAPSHOT:compile");
+            verifier.execute();
+            verifier.verifyFilePresent("target/compile.txt");
+            verifier.verifyErrorFreeLog();
 
             assertTrue(requestedUris.isEmpty(), requestedUris.toString());
 
-            {
-                // phase 3: delete test artifact and run build in offline mode to check it fails now
-                // NOTE: Adding the settings again to offer Maven the bad choice of using the remote repo
-                Verifier verifier = newVerifier(testDir.getAbsolutePath());
-                verifier.setAutoclean(false);
-                verifier.deleteDirectory("target");
-                verifier.deleteArtifacts("org.apache.maven.its.mng0768");
-                verifier.addCliArgument("-o");
-                verifier.addCliArgument("--settings");
-                verifier.addCliArgument("settings.xml");
-                verifier.setLogFileName("log3.txt");
-                try {
-                    verifier.addCliArgument(
-                            "org.apache.maven.its.plugins:maven-it-plugin-dependency-resolution:2.1-SNAPSHOT:compile");
-                    verifier.execute();
-                    verifier.verifyErrorFreeLog();
-                    fail("Build did not fail to resolve missing dependency although Maven ought to work offline!");
-                } catch (VerificationException e) {
-                    // expected, should fail
-                }
+            // phase 3: delete test artifact and run build in offline mode to check it fails now
+            // NOTE: Adding the settings again to offer Maven the bad choice of using the remote repo
+            verifier = newVerifier(testDir.getAbsolutePath());
+            verifier.setAutoclean(false);
+            verifier.deleteDirectory("target");
+            verifier.deleteArtifacts("org.apache.maven.its.mng0768");
+            verifier.addCliArgument("-o");
+            verifier.addCliArgument("--settings");
+            verifier.addCliArgument("settings.xml");
+            verifier.setLogFileName("log3.txt");
+            try {
+                verifier.addCliArgument(
+                        "org.apache.maven.its.plugins:maven-it-plugin-dependency-resolution:2.1-SNAPSHOT:compile");
+                verifier.execute();
+                verifier.verifyErrorFreeLog();
+                fail("Build did not fail to resolve missing dependency although Maven ought to work offline!");
+            } catch (VerificationException e) {
+                // expected, should fail
             }
 
             System.out.println("Bound server socket to the port " + port);

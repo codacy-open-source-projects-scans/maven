@@ -34,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Tests {@link DefaultProfileSelector}.
  */
+@Deprecated
 public class DefaultProfileSelectorTest {
     private Profile newProfile(String id) {
         Activation activation = new Activation();
@@ -63,7 +64,8 @@ public class DefaultProfileSelectorTest {
         DefaultProfileActivationContext context = new DefaultProfileActivationContext();
         SimpleProblemCollector problems = new SimpleProblemCollector();
         List<Profile> active = selector.getActiveProfiles(profiles, context, problems);
-        assertTrue(active.isEmpty());
+        assertTrue(
+                active.isEmpty(), "Expected collection to be empty but had " + active.size() + " elements: " + active);
         assertEquals(1, problems.getErrors().size());
         assertEquals(
                 "Failed to determine activation for profile one: BOOM",

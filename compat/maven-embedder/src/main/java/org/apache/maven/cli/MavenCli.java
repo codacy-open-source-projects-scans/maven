@@ -27,7 +27,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -45,7 +45,7 @@ import java.util.Properties;
 import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -60,6 +60,7 @@ import org.apache.maven.InternalErrorException;
 import org.apache.maven.Maven;
 import org.apache.maven.api.Constants;
 import org.apache.maven.api.cli.extensions.CoreExtension;
+import org.apache.maven.api.cli.extensions.InputSource;
 import org.apache.maven.api.services.MessageBuilder;
 import org.apache.maven.api.services.MessageBuilderFactory;
 import org.apache.maven.building.FileSource;
@@ -139,7 +140,41 @@ import static org.apache.maven.api.Constants.MAVEN_INSTALLATION_CONF;
 @Deprecated
 public class MavenCli {
 
+    /**
+     * @deprecated Use {@link org.apache.maven.api.Constants#MAVEN_REPO_LOCAL} instead
+     */
+    public static final String LOCAL_REPO_PROPERTY = "maven.repo.local";
+
+    /**
+     * @deprecated Use {@link org.apache.maven.api.Session#getRootDirectory()} instead
+     */
     public static final String MULTIMODULE_PROJECT_DIRECTORY = "maven.multiModuleProjectDirectory";
+
+    /**
+     * @deprecated Use {@link System#getProperty(String)} with "user.home" instead
+     */
+    public static final String USER_HOME = System.getProperty("user.home");
+
+    /**
+     * @deprecated Use {@link org.apache.maven.api.Constants#MAVEN_USER_CONF} instead
+     */
+    public static final File USER_MAVEN_CONFIGURATION_HOME = new File(USER_HOME, ".m2");
+
+    /**
+     * @deprecated Use {@link org.apache.maven.api.Constants#MAVEN_USER_TOOLCHAINS} instead
+     */
+    public static final File DEFAULT_USER_TOOLCHAINS_FILE = new File(USER_MAVEN_CONFIGURATION_HOME, "toolchains.xml");
+
+    /**
+     * @deprecated Use {@link org.apache.maven.api.Constants#MAVEN_INSTALLATION_TOOLCHAINS} instead
+     */
+    public static final File DEFAULT_GLOBAL_TOOLCHAINS_FILE =
+            new File(System.getProperty("maven.conf"), "toolchains.xml");
+
+    /**
+     * @deprecated Use {@link org.apache.maven.api.Constants#MAVEN_STYLE_COLOR_PROPERTY} instead
+     */
+    public static final String STYLE_COLOR_PROPERTY = "style.color";
 
     private static final String MVN_MAVEN_CONFIG = ".mvn/maven.config";
 
@@ -383,7 +418,7 @@ public class MavenCli {
             File configFile = new File(cliRequest.multiModuleProjectDirectory, MVN_MAVEN_CONFIG);
 
             if (configFile.isFile()) {
-                try (Stream<String> lines = Files.lines(configFile.toPath(), Charset.defaultCharset())) {
+                try (Stream<String> lines = Files.lines(configFile.toPath(), StandardCharsets.UTF_8)) {
                     String[] args = lines.filter(arg -> !arg.isEmpty() && !arg.startsWith("#"))
                             .toArray(String[]::new);
                     mavenConfig = cliManager.parse(args);
@@ -543,9 +578,10 @@ public class MavenCli {
                         switch (logLevelThreshold.toLowerCase(Locale.ENGLISH)) {
                             case "warn", "warning" -> LogLevelRecorder.Level.WARN;
                             case "error" -> LogLevelRecorder.Level.ERROR;
-                            default -> throw new IllegalArgumentException(
-                                    logLevelThreshold
-                                            + " is not a valid log severity threshold. Valid severities are WARN/WARNING and ERROR.");
+                            default ->
+                                throw new IllegalArgumentException(
+                                        logLevelThreshold
+                                                + " is not a valid log severity threshold. Valid severities are WARN/WARNING and ERROR.");
                         };
                 recorder.setMaxLevelAllowed(level);
                 slf4jLogger.info("Enabled to break the build on log level {}.", logLevelThreshold);
@@ -643,7 +679,7 @@ public class MavenCli {
         populateProperties(cliRequest.commandLine, paths, cliRequest.systemProperties, cliRequest.userProperties);
 
         // now that we have properties, interpolate all arguments
-        Function<String, String> callback = v -> {
+        UnaryOperator<String> callback = v -> {
             String r = paths.getProperty(v);
             if (r == null) {
                 r = cliRequest.systemProperties.getProperty(v);
@@ -695,7 +731,7 @@ public class MavenCli {
                 .setClassPathScanning(PlexusConstants.SCANNING_INDEX)
                 .setAutoWiring(true)
                 .setJSR250Lifecycle(true)
-                .setStrictClassPathScanning(true)
+                .setStrictClassPathScanning(false)
                 .setName("maven");
 
         Set<String> exportedArtifacts = new HashSet<>(coreEntry.getExportedArtifacts());
@@ -724,7 +760,7 @@ public class MavenCli {
 
         container.setLoggerManager(plexusLoggerManager);
 
-        Function<String, String> extensionSource = expression -> {
+        UnaryOperator<String> extensionSource = expression -> {
             String value = cliRequest.userProperties.getProperty(expression);
             if (value == null) {
                 value = cliRequest.systemProperties.getProperty(expression);
@@ -811,7 +847,7 @@ public class MavenCli {
                 .setClassPathScanning(PlexusConstants.SCANNING_INDEX) //
                 .setAutoWiring(true) //
                 .setJSR250Lifecycle(true) //
-                .setStrictClassPathScanning(true) //
+                .setStrictClassPathScanning(false) //
                 .setName("maven");
 
         DefaultPlexusContainer container = new DefaultPlexusContainer(cc, new AbstractModule() {
@@ -858,7 +894,9 @@ public class MavenCli {
             Path extensionsPath = Path.of(extensionsFile);
             if (Files.exists(extensionsPath)) {
                 try (InputStream is = Files.newInputStream(extensionsPath)) {
-                    return new CoreExtensionsStaxReader().read(is, true).getExtensions();
+                    return new CoreExtensionsStaxReader()
+                            .read(is, true, InputSource.of(extensionsFile))
+                            .getExtensions();
                 }
             }
         }
@@ -913,7 +951,7 @@ public class MavenCli {
                 slf4jLogger.warn(
                         "The property '{}' has been set using a JVM system property which is deprecated. "
                                 + "The property can be passed as a Maven argument or in the Maven project configuration file,"
-                                + "usually located at ${session.rootDirectory}/.mvn/maven.properties.",
+                                + "usually located at ${session.rootDirectory}/.mvn/maven-user.properties.",
                         Constants.MAVEN_EXT_CLASS_PATH);
             }
         }
@@ -961,6 +999,7 @@ public class MavenCli {
 
     private int execute(CliRequest cliRequest) throws MavenExecutionRequestPopulationException {
         MavenExecutionRequest request = executionRequestPopulator.populateDefaults(cliRequest.request);
+        request.setRepositoryCache(new DefaultRepositoryCache()); // reset caches
 
         if (cliRequest.request.getRepositoryCache() == null) {
             cliRequest.request.setRepositoryCache(new DefaultRepositoryCache());
@@ -986,8 +1025,8 @@ public class MavenCli {
 
                 logSummary(summary, references, "", cliRequest.showErrors);
 
-                if (exception instanceof LifecycleExecutionException) {
-                    failedProjects.add(((LifecycleExecutionException) exception).getProject());
+                if (exception instanceof LifecycleExecutionException lifecycleExecutionException) {
+                    failedProjects.add(lifecycleExecutionException.getProject());
                 }
             }
 
@@ -1406,7 +1445,7 @@ public class MavenCli {
                 slf4jLogger.warn(
                         "The property '{}' has been set using a JVM system property which is deprecated. "
                                 + "The property can be passed as a Maven argument or in the Maven project configuration file,"
-                                + "usually located at ${session.rootDirectory}/.mvn/maven.properties.",
+                                + "usually located at ${session.rootDirectory}/.mvn/maven-user.properties.",
                         Constants.MAVEN_REPO_LOCAL);
             }
         }
@@ -1425,10 +1464,9 @@ public class MavenCli {
         }
 
         if (modelProcessor != null) {
-            return modelProcessor.locateExistingPom(current);
-        } else {
-            return current.isFile() ? current : null;
+            current = modelProcessor.locatePom(current);
         }
+        return current.isFile() ? current : null;
     }
 
     // Visible for testing
@@ -1585,13 +1623,6 @@ public class MavenCli {
         enableOnPresentOption(commandLine, String.valueOf(option), setting);
     }
 
-    private void enableOnAbsentOption(
-            final CommandLine commandLine, final char option, final Consumer<Boolean> setting) {
-        if (!commandLine.hasOption(option)) {
-            setting.accept(true);
-        }
-    }
-
     int calculateDegreeOfConcurrency(String threadConfiguration) {
         try {
             if (threadConfiguration.endsWith("C")) {
@@ -1661,7 +1692,7 @@ public class MavenCli {
         // ----------------------------------------------------------------------
         // Load config files
         // ----------------------------------------------------------------------
-        Function<String, String> callback =
+        UnaryOperator<String> callback =
                 or(paths::getProperty, prefix("cli.", commandLine::getOptionValue), systemProperties::getProperty);
 
         Path mavenConf;
@@ -1674,8 +1705,10 @@ public class MavenCli {
         } else {
             mavenConf = fileSystem.getPath("");
         }
-        Path propertiesFile = mavenConf.resolve("maven.properties");
-        MavenPropertiesLoader.loadProperties(userProperties, propertiesFile, callback, false);
+        Path systemPropertiesFile = mavenConf.resolve("maven-system.properties");
+        MavenPropertiesLoader.loadProperties(systemProperties, systemPropertiesFile, callback, false);
+        Path userPropertiesFile = mavenConf.resolve("maven-user.properties");
+        MavenPropertiesLoader.loadProperties(userProperties, userPropertiesFile, callback, false);
 
         // ----------------------------------------------------------------------
         // I'm leaving the setting of system properties here as not to break
@@ -1687,7 +1720,7 @@ public class MavenCli {
                 .forEach(k -> System.setProperty(k, userProperties.getProperty(k)));
     }
 
-    private static Function<String, String> prefix(String prefix, Function<String, String> cb) {
+    private static UnaryOperator<String> prefix(String prefix, UnaryOperator<String> cb) {
         return s -> {
             String v = null;
             if (s.startsWith(prefix)) {
@@ -1697,9 +1730,9 @@ public class MavenCli {
         };
     }
 
-    private static Function<String, String> or(Function<String, String>... callbacks) {
+    private static UnaryOperator<String> or(UnaryOperator<String>... callbacks) {
         return s -> {
-            for (Function<String, String> cb : callbacks) {
+            for (UnaryOperator<String> cb : callbacks) {
                 String r = cb.apply(s);
                 if (r != null) {
                     return r;
@@ -1722,11 +1755,7 @@ public class MavenCli {
     }
 
     private static Path getCanonicalPath(Path path) {
-        try {
-            return path.toRealPath();
-        } catch (IOException e) {
-            return getCanonicalPath(path.getParent()).resolve(path.getFileName());
-        }
+        return path.toAbsolutePath().normalize();
     }
 
     static class ExitException extends Exception {
@@ -1742,8 +1771,7 @@ public class MavenCli {
     //
 
     protected TransferListener getConsoleTransferListener(boolean printResourceNames) {
-        return new SimplexTransferListener(
-                new ConsoleMavenTransferListener(messageBuilderFactory, System.out, printResourceNames));
+        return new SimplexTransferListener(new ConsoleMavenTransferListener(System.out, printResourceNames));
     }
 
     protected TransferListener getBatchTransferListener() {

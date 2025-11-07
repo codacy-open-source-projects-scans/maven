@@ -47,10 +47,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class MavenITmng4326LocalSnapshotSuppressesRemoteCheckTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng4326LocalSnapshotSuppressesRemoteCheckTest() {
-        super("[3.0-beta-1,)");
-    }
-
     /**
      * Verify that locally built/installed snapshot artifacts suppress remote update checks (as long as the local copy
      * still satisfies the update policy configured for the remote repository).
@@ -107,7 +103,7 @@ public class MavenITmng4326LocalSnapshotSuppressesRemoteCheckTest extends Abstra
                     writer.println("</metadata>");
                 } else if (uri.endsWith(".pom")) {
                     response.setStatus(HttpServletResponse.SC_OK);
-                    writer.println("<project>");
+                    writer.println("<project xmlns=\"http://maven.apache.org/POM/4.0.0\">");
                     writer.println("  <modelVersion>4.0.0</modelVersion>");
                     writer.println("  <groupId>org.apache.maven.its.mng4326</groupId>");
                     writer.println("  <artifactId>dep</artifactId>");

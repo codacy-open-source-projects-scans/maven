@@ -154,7 +154,7 @@ public class MavenMetadataSource implements ArtifactMetadataSource {
         Artifact artifact = request.getArtifact();
 
         //
-        // If we have a system scoped artifact then we do not want any searching in local or remote repositories
+        // If we have a system scoped artifact, then we do not want any searching in local or remote repositories,
         // and we want artifact resolution to only return the system scoped artifact itself.
         //
         if (artifact.getScope() != null && artifact.getScope().equals(Artifact.SCOPE_SYSTEM)) {
@@ -187,8 +187,8 @@ public class MavenMetadataSource implements ArtifactMetadataSource {
         RepositorySystemSession repositorySession = legacySupport.getRepositorySession();
         final WorkspaceReader workspace = repositorySession.getWorkspaceReader();
         Model model;
-        if (workspace instanceof MavenWorkspaceReader) {
-            model = ((MavenWorkspaceReader) workspace).findModel(RepositoryUtils.toArtifact(artifact));
+        if (workspace instanceof MavenWorkspaceReader mavenWorkspaceReader) {
+            model = mavenWorkspaceReader.findModel(RepositoryUtils.toArtifact(artifact));
         } else {
             model = null;
         }
@@ -200,20 +200,24 @@ public class MavenMetadataSource implements ArtifactMetadataSource {
             managedDependencies = dependencyManagement == null ? null : dependencyManagement.getDependencies();
             MavenSession session = legacySupport.getSession();
             if (session != null) {
-                pomRepositories = session.getProjects().stream()
-                        .filter(p -> artifact.equals(p.getArtifact()))
-                        .map(MavenProject::getRemoteArtifactRepositories)
-                        .findFirst()
-                        .orElseGet(() -> getRepositoriesFromModel(repositorySession, model));
+                if (session.getProjects() != null) {
+                    pomRepositories = session.getProjects().stream()
+                            .filter(p -> artifact.equals(p.getArtifact()))
+                            .findFirst()
+                            .map(MavenProject::getRemoteArtifactRepositories)
+                            .orElseGet(() -> getRepositoriesFromModel(repositorySession, model));
+                } else {
+                    pomRepositories = getRepositoriesFromModel(repositorySession, model);
+                }
             } else {
                 pomRepositories = new ArrayList<>();
             }
-        } else if (artifact instanceof ArtifactWithDependencies) {
+        } else if (artifact instanceof ArtifactWithDependencies artifactWithDependencies) {
             pomArtifact = artifact;
 
-            dependencies = ((ArtifactWithDependencies) artifact).getDependencies();
+            dependencies = artifactWithDependencies.getDependencies();
 
-            managedDependencies = ((ArtifactWithDependencies) artifact).getManagedDependencies();
+            managedDependencies = artifactWithDependencies.getManagedDependencies();
         } else {
             ProjectRelocation rel = retrieveRelocatedProject(artifact, request);
 
@@ -227,7 +231,7 @@ public class MavenMetadataSource implements ArtifactMetadataSource {
 
             if (rel.project == null) {
                 // When this happens we have a Maven 1.x POM, or some invalid POM.
-                // It should have never found its way into Maven 2.x repository but it did.
+                // It should have never found its way into Maven 2.x repository, but it did.
                 dependencies = Collections.emptyList();
             } else {
                 dependencies = rel.project.getModel().getDependencies();
@@ -287,7 +291,7 @@ public class MavenMetadataSource implements ArtifactMetadataSource {
             try {
                 pomRepositories.add(MavenRepositorySystem.buildArtifactRepository(modelRepository));
             } catch (InvalidRepositoryException e) {
-                // can not use this then
+                // cannot use this then
             }
         }
         mavenRepositorySystem.injectMirror(repositorySession, pomRepositories);
@@ -665,8 +669,7 @@ public class MavenMetadataSource implements ArtifactMetadataSource {
     }
 
     private ModelProblem hasMissingParentPom(ProjectBuildingException e) {
-        if (e.getCause() instanceof ModelBuildingException) {
-            ModelBuildingException mbe = (ModelBuildingException) e.getCause();
+        if (e.getCause() instanceof ModelBuildingException mbe) {
             for (ModelProblem problem : mbe.getProblems()) {
                 if (problem.getException() instanceof UnresolvableModelException) {
                     return problem;

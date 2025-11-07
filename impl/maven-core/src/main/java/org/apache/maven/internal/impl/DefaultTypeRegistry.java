@@ -22,31 +22,29 @@ import javax.inject.Inject;
 import javax.inject.Named;
 import javax.inject.Singleton;
 
-import java.util.List;
-import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 import org.apache.maven.api.JavaPathType;
 import org.apache.maven.api.Type;
 import org.apache.maven.api.annotations.Nonnull;
 import org.apache.maven.api.services.LanguageRegistry;
+import org.apache.maven.api.services.Lookup;
 import org.apache.maven.api.services.TypeRegistry;
 import org.apache.maven.api.spi.TypeProvider;
 import org.apache.maven.artifact.handler.ArtifactHandler;
 import org.apache.maven.artifact.handler.manager.LegacyArtifactHandlerManager;
 import org.apache.maven.eventspy.AbstractEventSpy;
 import org.apache.maven.execution.ExecutionEvent;
-import org.apache.maven.internal.impl.resolver.type.DefaultType;
+import org.apache.maven.impl.resolver.type.DefaultType;
 
-import static java.util.function.Function.identity;
-import static org.apache.maven.internal.impl.Utils.nonNull;
+import static java.util.Objects.requireNonNull;
 
 @Named
 @Singleton
 public class DefaultTypeRegistry extends AbstractEventSpy implements TypeRegistry {
-    private final Map<String, Type> types;
+    private final Lookup lookup;
 
     private final LanguageRegistry languageRegistry;
 
@@ -55,20 +53,16 @@ public class DefaultTypeRegistry extends AbstractEventSpy implements TypeRegistr
     private final LegacyArtifactHandlerManager manager;
 
     @Inject
-    public DefaultTypeRegistry(
-            List<TypeProvider> providers, LanguageRegistry languageRegistry, LegacyArtifactHandlerManager manager) {
-        this.types = nonNull(providers, "providers").stream()
-                .flatMap(p -> p.provides().stream())
-                .collect(Collectors.toMap(Type::id, identity()));
-        this.languageRegistry = nonNull(languageRegistry, "languageRegistry");
+    public DefaultTypeRegistry(Lookup lookup, LanguageRegistry languageRegistry, LegacyArtifactHandlerManager manager) {
+        this.lookup = requireNonNull(lookup, "lookup cannot be null");
+        this.languageRegistry = requireNonNull(languageRegistry, "languageRegistry cannot be null");
         this.usedTypes = new ConcurrentHashMap<>();
-        this.manager = nonNull(manager, "artifactHandlerManager");
+        this.manager = requireNonNull(manager, "artifactHandlerManager cannot be null");
     }
 
     @Override
     public void onEvent(Object event) {
-        if (event instanceof ExecutionEvent) {
-            ExecutionEvent executionEvent = (ExecutionEvent) event;
+        if (event instanceof ExecutionEvent executionEvent) {
             if (executionEvent.getType() == ExecutionEvent.Type.SessionEnded) {
                 usedTypes.clear();
             }
@@ -83,9 +77,13 @@ public class DefaultTypeRegistry extends AbstractEventSpy implements TypeRegistr
     @Override
     @Nonnull
     public Type require(String id) {
-        nonNull(id, "id");
+        requireNonNull(id, "id cannot be null");
         return usedTypes.computeIfAbsent(id, i -> {
-            Type type = types.get(id);
+            Type type = lookup.lookupList(TypeProvider.class).stream()
+                    .flatMap(p -> p.provides().stream())
+                    .filter(t -> Objects.equals(id, t.id()))
+                    .findFirst()
+                    .orElse(null);
             if (type == null) {
                 // Copy data as the ArtifactHandler is not immutable, but Type should be.
                 ArtifactHandler handler = manager.getArtifactHandler(id);

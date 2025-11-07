@@ -93,6 +93,7 @@ public class MetadataGraphVertex implements Comparable<MetadataGraphVertex> {
     }
 
     // ---------------------------------------------------------------------
+    @Override
     public int compareTo(MetadataGraphVertex vertex) {
         if (vertex == null || vertex.getMd() == null) {
             return 1;
@@ -142,10 +143,10 @@ public class MetadataGraphVertex implements Comparable<MetadataGraphVertex> {
     // ---------------------------------------------------------------------
     @Override
     public boolean equals(Object vo) {
-        if (!(vo instanceof MetadataGraphVertex)) {
-            return false;
+        if (vo instanceof MetadataGraphVertex metadataGraphVertex) {
+            return compareTo(metadataGraphVertex) == 0;
         }
-        return compareTo((MetadataGraphVertex) vo) == 0;
+        return false;
     }
 
     // ---------------------------------------------------------------------
@@ -168,11 +169,5 @@ public class MetadataGraphVertex implements Comparable<MetadataGraphVertex> {
         }
 
         return hashString.toString().hashCode();
-
-        // BASE64Encoder b64 = new BASE64Encoder();
-        // return b64.encode( hashString.toString().getBytes() ).hashCode();
     }
-
-    // ---------------------------------------------------------------------
-    // ---------------------------------------------------------------------
 }

@@ -37,6 +37,7 @@ public class ExclusionSetFilter implements ArtifactFilter {
         this.excludes = excludes;
     }
 
+    @Override
     public boolean include(Artifact artifact) {
         String id = artifact.getArtifactId();
 
@@ -62,12 +63,10 @@ public class ExclusionSetFilter implements ArtifactFilter {
             return true;
         }
 
-        if (!(obj instanceof ExclusionSetFilter)) {
+        if (obj instanceof ExclusionSetFilter other) {
+            return excludes.equals(other.excludes);
+        } else {
             return false;
         }
-
-        ExclusionSetFilter other = (ExclusionSetFilter) obj;
-
-        return excludes.equals(other.excludes);
     }
 }

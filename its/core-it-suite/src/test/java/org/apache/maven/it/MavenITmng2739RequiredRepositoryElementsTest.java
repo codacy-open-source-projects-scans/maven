@@ -31,14 +31,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
  *
  * @author <a href="mailto:brianf@apache.org">Brian Fox</a>
  * @author jdcasey
+ * @since 2.0.9
+ *
  */
 public class MavenITmng2739RequiredRepositoryElementsTest extends AbstractMavenIntegrationTestCase {
-    public MavenITmng2739RequiredRepositoryElementsTest() {
-        super("(2.0.9,)"); // only test in 2.0.9+
-    }
 
     @Test
-    public void testitMNG2739_RepositoryId() throws Exception {
+    public void testitMNG2739RepositoryId() throws Exception {
         File testDir = extractResources("/mng-2739/repo-id");
 
         Verifier verifier;
@@ -68,7 +67,7 @@ public class MavenITmng2739RequiredRepositoryElementsTest extends AbstractMavenI
     }
 
     @Test
-    public void testitMNG2739_RepositoryUrl() throws Exception {
+    public void testitMNG2739RepositoryUrl() throws Exception {
         // The testdir is computed from the location of this
         // file.
         File testDir = extractResources("/mng-2739/repo-url");

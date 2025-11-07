@@ -29,10 +29,6 @@ import org.junit.jupiter.api.Test;
  */
 public class MavenITmng4644StrictPomParsingRejectsMisplacedTextTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng4644StrictPomParsingRejectsMisplacedTextTest() {
-        super("[3.0-alpha-7,)");
-    }
-
     /**
      * Verify that misplaced text inside the project element of a POM causes a parser error during reactor builds.
      *
@@ -49,7 +45,7 @@ public class MavenITmng4644StrictPomParsingRejectsMisplacedTextTest extends Abst
             verifier.execute();
             verifier.verifyErrorFreeLog();
 
-            fail("Should fail to validate the POM syntax due to misplaced text in <project> element.");
+            fail("Should fail to validate the POM syntax due to misplaced text in project element.");
         } catch (VerificationException e) {
             // expected
         }

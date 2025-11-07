@@ -18,13 +18,11 @@
  */
 package org.apache.maven.api.services;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-
 import org.apache.maven.api.ProtoSession;
 import org.apache.maven.api.annotations.Experimental;
 import org.apache.maven.api.annotations.Nonnull;
+
+import static java.util.Objects.requireNonNull;
 
 /**
  * Base class for requests.
@@ -32,29 +30,28 @@ import org.apache.maven.api.annotations.Nonnull;
  * @since 4.0.0
  */
 @Experimental
-abstract class BaseRequest<S extends ProtoSession> {
+abstract class BaseRequest<S extends ProtoSession> implements Request<S> {
 
     private final S session;
+    private final RequestTrace trace;
 
     protected BaseRequest(@Nonnull S session) {
-        this.session = nonNull(session, "session cannot be null");
+        this(session, null);
+    }
+
+    protected BaseRequest(@Nonnull S session, RequestTrace trace) {
+        this.session = requireNonNull(session, "session cannot be null");
+        this.trace = trace;
     }
 
     @Nonnull
+    @Override
     public S getSession() {
         return session;
     }
 
-    public static <T> T nonNull(T obj, String message) {
-        if (obj == null) {
-            throw new IllegalArgumentException(message);
-        }
-        return obj;
-    }
-
-    protected static <T> Collection<T> unmodifiable(Collection<T> obj) {
-        return obj != null && !obj.isEmpty()
-                ? Collections.unmodifiableCollection(new ArrayList<>(obj))
-                : Collections.emptyList();
+    @Override
+    public RequestTrace getTrace() {
+        return trace;
     }
 }

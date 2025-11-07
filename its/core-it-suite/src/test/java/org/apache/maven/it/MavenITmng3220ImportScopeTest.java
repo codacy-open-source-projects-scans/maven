@@ -31,9 +31,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  */
 public class MavenITmng3220ImportScopeTest extends AbstractMavenIntegrationTestCase {
-    public MavenITmng3220ImportScopeTest() {
-        super("(2.0.8,3.0-alpha-1),[3.0-alpha-3,)");
-    }
 
     @Test
     public void testitMNG3220a() throws Exception {
@@ -81,7 +78,8 @@ public class MavenITmng3220ImportScopeTest extends AbstractMavenIntegrationTestC
         boolean found = false;
         for (String line : lines) {
             if (line.contains("\'dependencies.dependency.version\' is missing for junit:junit")
-                    || line.contains("\'dependencies.dependency.version\' for junit:junit:jar is missing")) {
+                    || line.contains(
+                            "\'dependencies.dependency.version\' for groupId='junit', artifactId='junit', type='jar' is missing")) {
                 found = true;
                 break;
             }

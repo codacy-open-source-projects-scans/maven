@@ -30,11 +30,11 @@ import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.inheritance.AbstractProjectInheritanceTestCase;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
-import org.junit.jupiter.api.condition.OS;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.condition.OS.WINDOWS;
 
 /**
  * A test which demonstrates maven's recursive inheritance where
@@ -47,6 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  */
 @Deprecated
+@SuppressWarnings("checkstyle:UnusedLocalVariable")
 class ProjectInheritanceTest extends AbstractProjectInheritanceTestCase {
     // ----------------------------------------------------------------------
     //
@@ -63,7 +64,7 @@ class ProjectInheritanceTest extends AbstractProjectInheritanceTestCase {
     // ----------------------------------------------------------------------
 
     @Test
-    @DisabledOnOs(OS.WINDOWS) // need to investigate why it fails on windows
+    @DisabledOnOs(value = WINDOWS, disabledReason = "need to investigate why it fails on windows")
     void testProjectInheritance() throws Exception {
         File localRepo = getLocalRepositoryPath();
 

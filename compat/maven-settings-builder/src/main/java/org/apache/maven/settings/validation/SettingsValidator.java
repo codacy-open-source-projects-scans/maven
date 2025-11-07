@@ -24,7 +24,7 @@ import org.apache.maven.settings.building.SettingsProblemCollector;
 /**
  * Validate a model settings
  *
- * @deprecated since 4.0.0, use {@link org.apache.maven.internal.impl.DefaultSettingsValidator} instead
+ * @deprecated since 4.0.0, use {@code org.apache.maven.impl.DefaultSettingsValidator} instead
  */
 @Deprecated(since = "4.0.0")
 public interface SettingsValidator {

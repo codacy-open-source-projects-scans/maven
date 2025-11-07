@@ -44,6 +44,7 @@ public class DefaultGraphConflictResolver implements GraphConflictResolver {
 
     // -------------------------------------------------------------------------------------
     // -------------------------------------------------------------------------------------
+    @Override
     public MetadataGraph resolveConflicts(MetadataGraph graph, ArtifactScopeEnum scope)
             throws GraphConflictResolutionException {
         if (policy == null) {
@@ -94,15 +95,8 @@ public class DefaultGraphConflictResolver implements GraphConflictResolver {
                     if (entry.equals(v)) { // unless it's an entry point.
                         // currently processing the entry point - it should not have any entry incident edges
                         res.getEntry().getMd().setWhy("This is a graph entry point. No links.");
-                    } else {
-                        // System.out.println("--->"+v.getMd().toDomainString()
-                        // +" has been terminated on this entry set\n-------------------\n"
-                        // +ins
-                        // +"\n-------------------\n"
-                        // );
                     }
                 } else {
-                    // System.out.println("+++>"+v.getMd().toDomainString()+" still has "+edge.toString() );
                     // fill in domain md with actual version data
                     ArtifactMetadata md = v.getMd();
                     ArtifactMetadata newMd = new ArtifactMetadata(
@@ -126,10 +120,6 @@ public class DefaultGraphConflictResolver implements GraphConflictResolver {
                     res.addEdge(sourceV, newV, edge);
                 }
             }
-            // System.err.println("Original graph("+graph.getVertices().size()+"):\n"+graph.toString());
-            // System.err.println("Cleaned("+requestedScope+") graph("+res.getVertices().size()+"):\n"+res.toString());
-            // System.err.println("Linked("+requestedScope+")
-            // subgraph("+linkedRes.getVertices().size()+"):\n"+linkedRes.toString());
             return findLinkedSubgraph(res);
         } catch (MetadataResolutionException e) {
             throw new GraphConflictResolutionException(e);
@@ -154,7 +144,7 @@ public class DefaultGraphConflictResolver implements GraphConflictResolver {
             }
         }
 
-        if (dropList.size() < 1) {
+        if (dropList.isEmpty()) {
             return g;
         }
 
@@ -177,7 +167,7 @@ public class DefaultGraphConflictResolver implements GraphConflictResolver {
 
         List<MetadataGraphEdge> exitList = graph.getExcidentEdges(from);
         // String s = "|---> "+from.getMd().toString()+" - "+(exitList == null ? -1 : exitList.size()) + " exit links";
-        if (exitList != null && exitList.size() > 0) {
+        if (exitList != null && !exitList.isEmpty()) {
             for (MetadataGraphEdge e : graph.getExcidentEdges(from)) {
                 visit(e.getTarget(), visited, graph);
             }

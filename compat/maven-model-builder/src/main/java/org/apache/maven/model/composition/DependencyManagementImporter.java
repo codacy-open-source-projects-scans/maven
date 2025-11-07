@@ -20,15 +20,15 @@ package org.apache.maven.model.composition;
 
 import java.util.List;
 
-import org.apache.maven.api.model.DependencyManagement;
-import org.apache.maven.api.model.Model;
+import org.apache.maven.model.DependencyManagement;
+import org.apache.maven.model.Model;
 import org.apache.maven.model.building.ModelBuildingRequest;
 import org.apache.maven.model.building.ModelProblemCollector;
 
 /**
  * Handles the import of dependency management from other models into the target model.
  *
- * @deprecated use {@link org.apache.maven.api.services.ModelBuilder} instead
+ * @deprecated use {@code org.apache.maven.api.services.ModelBuilder} instead
  */
 @Deprecated(since = "4.0.0")
 public interface DependencyManagementImporter {
@@ -41,7 +41,7 @@ public interface DependencyManagementImporter {
      * @param request The model building request that holds further settings, must not be {@code null}.
      * @param problems The container used to collect problems that were encountered, must not be {@code null}.
      */
-    Model importManagement(
+    void importManagement(
             Model target,
             List<? extends DependencyManagement> sources,
             ModelBuildingRequest request,

@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.maven.api.services.ChecksumAlgorithmService;
+import org.apache.maven.impl.DefaultChecksumAlgorithmService;
 import org.eclipse.aether.internal.impl.checksum.DefaultChecksumAlgorithmFactorySelector;
 import org.eclipse.aether.internal.impl.checksum.Md5ChecksumAlgorithmFactory;
 import org.eclipse.aether.internal.impl.checksum.Sha1ChecksumAlgorithmFactory;
@@ -63,7 +64,7 @@ public class DefaultChecksumAlgorithmServiceTest {
         ChecksumAlgorithmService.ChecksumCalculator calculator =
                 service.select("SHA-1").getCalculator();
         calculator.update(ByteBuffer.allocate(0));
-        assertEquals(calculator.checksum(), "da39a3ee5e6b4b0d3255bfef95601890afd80709");
+        assertEquals("da39a3ee5e6b4b0d3255bfef95601890afd80709", calculator.checksum());
     }
 
     @Test

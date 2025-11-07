@@ -27,10 +27,6 @@ import org.junit.jupiter.api.Test;
  */
 public class MavenITmng5445LegacyStringSearchModelInterpolatorTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng5445LegacyStringSearchModelInterpolatorTest() {
-        super("[3.1,)");
-    }
-
     /**
      * Verify that the legacy StringSearchModelInterpolator has its PathTranslator injected.
      *
@@ -40,7 +36,16 @@ public class MavenITmng5445LegacyStringSearchModelInterpolatorTest extends Abstr
     public void testit() throws Exception {
         File testDir = extractResources("/mng-5445");
 
-        Verifier verifier = newVerifier(testDir.getAbsolutePath());
+        // First, build the test plugin
+        Verifier verifier = newVerifier(new File(testDir, "maven-it-plugin-model-interpolation").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Then, run the test project that uses the plugin
+        verifier = newVerifier(testDir.getAbsolutePath());
         verifier.setAutoclean(false);
         verifier.deleteDirectory("target");
         verifier.addCliArgument("validate");

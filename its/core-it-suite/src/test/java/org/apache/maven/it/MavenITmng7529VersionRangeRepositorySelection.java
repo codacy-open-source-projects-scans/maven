@@ -27,10 +27,6 @@ import org.junit.jupiter.api.Test;
  */
 public class MavenITmng7529VersionRangeRepositorySelection extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng7529VersionRangeRepositorySelection() {
-        super("(3.8.6,)");
-    }
-
     /**
      * Test dependency resolution from a version range using multiple remote repositories
      * with snapshot or release enabled.
@@ -40,7 +36,17 @@ public class MavenITmng7529VersionRangeRepositorySelection extends AbstractMaven
     @Test
     public void testit() throws Exception {
         File testDir = extractResources("/mng-7529");
-        Verifier verifier = newVerifier(testDir.getAbsolutePath());
+
+        // First, build the test plugin
+        Verifier verifier = newVerifier(new File(testDir, "mng7529-plugin").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Then, run the test project that uses the plugin
+        verifier = newVerifier(testDir.getAbsolutePath());
         verifier.setAutoclean(false);
         verifier.deleteDirectory("target");
         verifier.deleteArtifacts("org.apache.maven.its.mng7529");

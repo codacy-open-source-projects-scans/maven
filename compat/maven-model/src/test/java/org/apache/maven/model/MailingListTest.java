@@ -46,7 +46,7 @@ class MailingListTest {
     @Test
     void testEqualsIdentity() {
         MailingList thing = new MailingList();
-        assertTrue(thing.equals(thing));
+        assertTrue(thing.equals(thing), "Expected " + thing + " to equal " + thing);
     }
 
     @Test
@@ -54,6 +54,7 @@ class MailingListTest {
         assertNotNull(new MailingList().toString());
     }
 
+    @Test
     public void testToStringNotNonsense() {
         MailingList list = new MailingList();
         list.setName("modello-dev");

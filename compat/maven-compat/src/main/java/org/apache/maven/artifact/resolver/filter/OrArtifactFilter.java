@@ -41,6 +41,7 @@ public class OrArtifactFilter implements ArtifactFilter {
         this.filters = new LinkedHashSet<>(filters);
     }
 
+    @Override
     public boolean include(Artifact artifact) {
         for (ArtifactFilter filter : filters) {
             if (filter.include(artifact)) {
@@ -68,12 +69,10 @@ public class OrArtifactFilter implements ArtifactFilter {
             return true;
         }
 
-        if (!(obj instanceof OrArtifactFilter)) {
+        if (obj instanceof OrArtifactFilter other) {
+            return filters.equals(other.filters);
+        } else {
             return false;
         }
-
-        OrArtifactFilter other = (OrArtifactFilter) obj;
-
-        return filters.equals(other.filters);
     }
 }

@@ -20,7 +20,7 @@ package org.apache.maven.cling.invoker.mvn.resident;
 
 import java.nio.file.FileSystem;
 import java.nio.file.Path;
-import java.util.Arrays;
+import java.util.List;
 
 import com.google.common.jimfs.Configuration;
 import com.google.common.jimfs.Jimfs;
@@ -43,10 +43,9 @@ import org.junit.jupiter.api.io.TempDir;
 public class ResidentMavenInvokerTest extends MavenInvokerTestSupport {
 
     @Override
-    protected Invoker createInvoker() {
-        return new ResidentMavenInvoker(ProtoLookup.builder()
-                .addMapping(ClassWorld.class, new ClassWorld("plexus.core", ClassLoader.getSystemClassLoader()))
-                .build());
+    protected Invoker createInvoker(ClassWorld classWorld) {
+        return new ResidentMavenInvoker(
+                ProtoLookup.builder().addMapping(ClassWorld.class, classWorld).build(), null);
     }
 
     @Override
@@ -55,15 +54,18 @@ public class ResidentMavenInvokerTest extends MavenInvokerTestSupport {
     }
 
     @Test
-    void defaultFs(@TempDir(cleanup = CleanupMode.ON_SUCCESS) Path tempDir) throws Exception {
-        invoke(tempDir, Arrays.asList("clean", "verify"));
+    void defaultFs(
+            @TempDir(cleanup = CleanupMode.ON_SUCCESS) Path cwd,
+            @TempDir(cleanup = CleanupMode.ON_SUCCESS) Path userHome)
+            throws Exception {
+        invoke(cwd, userHome, List.of("verify"), List.of());
     }
 
-    @Disabled("Until we move off fully from File")
+    @Disabled("Enable it when fully moved to NIO2 with Path/Filesystem (ie MavenExecutionRequest)")
     @Test
     void jimFs() throws Exception {
         try (FileSystem fs = Jimfs.newFileSystem(Configuration.unix())) {
-            invoke(fs.getPath("/"), Arrays.asList("clean", "verify"));
+            invoke(fs.getPath("/cwd"), fs.getPath("/home"), List.of("verify"), List.of());
         }
     }
 }

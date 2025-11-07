@@ -50,41 +50,48 @@ public class DefaultArtifactVersion implements ArtifactVersion {
             return true;
         }
 
-        if (!(other instanceof ArtifactVersion)) {
-            return false;
+        if (other instanceof ArtifactVersion artifactVersion) {
+            return compareTo(artifactVersion) == 0;
         }
 
-        return compareTo((ArtifactVersion) other) == 0;
+        return false;
     }
 
+    @Override
     public int compareTo(ArtifactVersion otherVersion) {
-        if (otherVersion instanceof DefaultArtifactVersion) {
-            return this.comparable.compareTo(((DefaultArtifactVersion) otherVersion).comparable);
+        if (otherVersion instanceof DefaultArtifactVersion defaultArtifactVersion) {
+            return this.comparable.compareTo(defaultArtifactVersion.comparable);
         } else {
             return compareTo(new DefaultArtifactVersion(otherVersion.toString()));
         }
     }
 
+    @Override
     public int getMajorVersion() {
         return majorVersion != null ? majorVersion : 0;
     }
 
+    @Override
     public int getMinorVersion() {
         return minorVersion != null ? minorVersion : 0;
     }
 
+    @Override
     public int getIncrementalVersion() {
         return incrementalVersion != null ? incrementalVersion : 0;
     }
 
+    @Override
     public int getBuildNumber() {
         return buildNumber != null ? buildNumber : 0;
     }
 
+    @Override
     public String getQualifier() {
         return qualifier;
     }
 
+    @Override
     public final void parseVersion(String version) {
         comparable = new ComparableVersion(version);
 
@@ -144,7 +151,7 @@ public class DefaultArtifactVersion implements ArtifactVersion {
                 }
             }
             if (idx < tok.length) {
-                qualifier = tok[idx++];
+                qualifier = tok[idx];
                 fallback = isDigits(qualifier);
             }
 

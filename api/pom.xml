@@ -23,7 +23,7 @@
   <parent>
     <groupId>org.apache.maven</groupId>
     <artifactId>maven</artifactId>
-    <version>4.0.0-rc-3-SNAPSHOT</version>
+    <version>4.1.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>maven-api</artifactId>
@@ -48,27 +48,6 @@
   <properties>
     <project.directory>api</project.directory>
   </properties>
-
-  <build>
-    <pluginManagement>
-      <plugins>
-        <plugin>
-          <groupId>org.codehaus.modello</groupId>
-          <artifactId>modello-maven-plugin</artifactId>
-          <executions>
-            <execution>
-              <id>modello-site-docs</id>
-              <goals>
-                <goal>xdoc</goal>
-                <goal>xsd</goal>
-              </goals>
-              <phase>none</phase>
-            </execution>
-          </executions>
-        </plugin>
-      </plugins>
-    </pluginManagement>
-  </build>
 
   <profiles>
     <profile>

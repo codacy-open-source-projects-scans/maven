@@ -27,7 +27,9 @@ import org.apache.maven.model.building.ModelProblem;
 /**
  * Collects the output of the project builder.
  *
+ * @deprecated use {@code org.apache.maven.api.services.ProjectBuilder} instead
  */
+@Deprecated(since = "4.0.0")
 class DefaultProjectBuildingResult implements ProjectBuildingResult {
 
     private final String projectId;
@@ -73,22 +75,27 @@ class DefaultProjectBuildingResult implements ProjectBuildingResult {
         this.dependencyResolutionResult = null;
     }
 
+    @Override
     public String getProjectId() {
         return projectId;
     }
 
+    @Override
     public File getPomFile() {
         return pomFile;
     }
 
+    @Override
     public MavenProject getProject() {
         return project;
     }
 
+    @Override
     public List<ModelProblem> getProblems() {
         return problems;
     }
 
+    @Override
     public DependencyResolutionResult getDependencyResolutionResult() {
         return dependencyResolutionResult;
     }

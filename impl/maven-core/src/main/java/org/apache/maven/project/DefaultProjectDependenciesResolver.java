@@ -30,6 +30,7 @@ import java.util.Map;
 import org.apache.maven.RepositoryUtils;
 import org.apache.maven.api.DependencyScope;
 import org.apache.maven.artifact.Artifact;
+import org.apache.maven.impl.resolver.RelocatedArtifact;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Exclusion;
@@ -52,7 +53,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
+ * @deprecated use {@code org.apache.maven.api.services.ProjectBuilder} instead
  */
+@Deprecated(since = "4.0.0")
 @Named
 @Singleton
 public class DefaultProjectDependenciesResolver implements ProjectDependenciesResolver {
@@ -67,6 +70,7 @@ public class DefaultProjectDependenciesResolver implements ProjectDependenciesRe
         this.decorators = decorators;
     }
 
+    @Override
     public DependencyResolutionResult resolve(DependencyResolutionRequest request)
             throws DependencyResolutionException {
         final RequestTrace trace = RequestTrace.newChild(null, request);
@@ -170,10 +174,7 @@ public class DefaultProjectDependenciesResolver implements ProjectDependenciesRe
                 if (!child.getRelocations().isEmpty()) {
                     org.eclipse.aether.artifact.Artifact artifact =
                             child.getDependency().getArtifact();
-                    String message =
-                            artifact instanceof org.apache.maven.internal.impl.resolver.RelocatedArtifact relocated
-                                    ? relocated.getMessage()
-                                    : null;
+                    String message = artifact instanceof RelocatedArtifact relocated ? relocated.getMessage() : null;
                     logger.warn("The artifact " + child.getRelocations().get(0) + " has been relocated to " + artifact
                             + (message != null ? ": " + message : ""));
                 }

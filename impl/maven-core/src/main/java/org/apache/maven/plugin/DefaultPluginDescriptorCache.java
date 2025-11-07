@@ -51,14 +51,17 @@ public class DefaultPluginDescriptorCache implements PluginDescriptorCache {
     private Map<Key, PluginDescriptor> descriptors = new ConcurrentHashMap<>(128);
     private Map<Key, Key> keys = new ConcurrentHashMap<>();
 
+    @Override
     public void flush() {
         descriptors.clear();
     }
 
+    @Override
     public Key createKey(Plugin plugin, List<RemoteRepository> repositories, RepositorySystemSession session) {
         return keys.computeIfAbsent(new CacheKey(plugin, repositories, session), k -> k);
     }
 
+    @Override
     public PluginDescriptor get(Key cacheKey) {
         return clone(descriptors.get(cacheKey));
     }
@@ -67,23 +70,20 @@ public class DefaultPluginDescriptorCache implements PluginDescriptorCache {
     public PluginDescriptor get(Key key, PluginDescriptorSupplier supplier)
             throws PluginDescriptorParsingException, PluginResolutionException, InvalidPluginDescriptorException {
 
-        try {
-            PluginDescriptor desc = descriptors.get(key);
-            if (desc == null) {
-                synchronized (key) {
-                    desc = descriptors.get(key);
-                    if (desc == null) {
-                        desc = supplier.load();
-                        descriptors.putIfAbsent(key, clone(desc));
-                    }
+        PluginDescriptor desc = descriptors.get(key);
+        if (desc == null) {
+            synchronized (key) {
+                desc = descriptors.get(key);
+                if (desc == null) {
+                    desc = supplier.load();
+                    descriptors.putIfAbsent(key, clone(desc));
                 }
             }
-            return clone(desc);
-        } catch (PluginDescriptorParsingException | PluginResolutionException | InvalidPluginDescriptorException e) {
-            throw e;
         }
+        return clone(desc);
     }
 
+    @Override
     public void put(Key cacheKey, PluginDescriptor pluginDescriptor) {
         descriptors.put(cacheKey, clone(pluginDescriptor));
     }
@@ -145,18 +145,16 @@ public class DefaultPluginDescriptorCache implements PluginDescriptorCache {
                 return true;
             }
 
-            if (!(obj instanceof CacheKey)) {
+            if (obj instanceof CacheKey that) {
+                return Objects.equals(this.artifactId, that.artifactId)
+                        && Objects.equals(this.groupId, that.groupId)
+                        && Objects.equals(this.version, that.version)
+                        && Objects.equals(this.localRepo, that.localRepo)
+                        && Objects.equals(this.workspace, that.workspace)
+                        && RepositoryUtils.repositoriesEquals(this.repositories, that.repositories);
+            } else {
                 return false;
             }
-
-            CacheKey that = (CacheKey) obj;
-
-            return Objects.equals(this.artifactId, that.artifactId)
-                    && Objects.equals(this.groupId, that.groupId)
-                    && Objects.equals(this.version, that.version)
-                    && Objects.equals(this.localRepo, that.localRepo)
-                    && Objects.equals(this.workspace, that.workspace)
-                    && RepositoryUtils.repositoriesEquals(this.repositories, that.repositories);
         }
 
         @Override

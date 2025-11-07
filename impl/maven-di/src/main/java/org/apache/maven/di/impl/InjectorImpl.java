@@ -31,7 +31,6 @@ import java.util.AbstractMap;
 import java.util.AbstractSet;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -47,6 +46,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.maven.api.annotations.Nonnull;
 import org.apache.maven.api.di.Provides;
 import org.apache.maven.api.di.Qualifier;
 import org.apache.maven.api.di.Singleton;
@@ -55,36 +55,42 @@ import org.apache.maven.di.Injector;
 import org.apache.maven.di.Key;
 import org.apache.maven.di.Scope;
 
+import static org.apache.maven.di.impl.Binding.getPriorityComparator;
+
 public class InjectorImpl implements Injector {
 
     private final Map<Key<?>, Set<Binding<?>>> bindings = new HashMap<>();
     private final Map<Class<? extends Annotation>, Supplier<Scope>> scopes = new HashMap<>();
     private final Set<String> loadedUrls = new HashSet<>();
+    private final ThreadLocal<Set<Key<?>>> resolutionStack = new ThreadLocal<>();
 
     public InjectorImpl() {
         bindScope(Singleton.class, new SingletonScope());
     }
 
+    @Nonnull
     @Override
-    public <T> T getInstance(Class<T> key) {
+    public <T> T getInstance(@Nonnull Class<T> key) {
         return getInstance(Key.of(key));
     }
 
+    @Nonnull
     @Override
-    public <T> T getInstance(Key<T> key) {
+    public <T> T getInstance(@Nonnull Key<T> key) {
         return getCompiledBinding(new Dependency<>(key, false)).get();
     }
 
     @SuppressWarnings("unchecked")
     @Override
-    public <T> void injectInstance(T instance) {
+    public <T> void injectInstance(@Nonnull T instance) {
         ReflectionUtils.generateInjectingInitializer(Key.of((Class<T>) instance.getClass()))
                 .compile(this::getCompiledBinding)
                 .accept(instance);
     }
 
+    @Nonnull
     @Override
-    public Injector discover(ClassLoader classLoader) {
+    public Injector discover(@Nonnull ClassLoader classLoader) {
         try {
             Enumeration<URL> enumeration = classLoader.getResources("META-INF/maven/org.apache.maven.api.di.Inject");
             while (enumeration.hasMoreElements()) {
@@ -107,13 +113,15 @@ public class InjectorImpl implements Injector {
         return this;
     }
 
+    @Nonnull
     @Override
-    public Injector bindScope(Class<? extends Annotation> scopeAnnotation, Scope scope) {
+    public Injector bindScope(@Nonnull Class<? extends Annotation> scopeAnnotation, @Nonnull Scope scope) {
         return bindScope(scopeAnnotation, () -> scope);
     }
 
+    @Nonnull
     @Override
-    public Injector bindScope(Class<? extends Annotation> scopeAnnotation, Supplier<Scope> scope) {
+    public Injector bindScope(@Nonnull Class<? extends Annotation> scopeAnnotation, @Nonnull Supplier<Scope> scope) {
         if (scopes.put(scopeAnnotation, scope) != null) {
             throw new DIException(
                     "Cannot rebind scope annotation class to a different implementation: " + scopeAnnotation);
@@ -121,15 +129,24 @@ public class InjectorImpl implements Injector {
         return this;
     }
 
+    @Nonnull
     @Override
-    public <U> Injector bindInstance(Class<U> clazz, U instance) {
+    public <U> Injector bindInstance(@Nonnull Class<U> clazz, @Nonnull U instance) {
         Key<?> key = Key.of(clazz, ReflectionUtils.qualifierOf(clazz));
         Binding<U> binding = Binding.toInstance(instance);
         return doBind(key, binding);
     }
 
     @Override
-    public Injector bindImplicit(Class<?> clazz) {
+    public <U> Injector bindSupplier(@Nonnull Class<U> clazz, @Nonnull Supplier<U> supplier) {
+        Key<?> key = Key.of(clazz, ReflectionUtils.qualifierOf(clazz));
+        Binding<U> binding = Binding.toSupplier(supplier);
+        return doBind(key, binding);
+    }
+
+    @Nonnull
+    @Override
+    public Injector bindImplicit(@Nonnull Class<?> clazz) {
         Key<?> key = Key.of(clazz, ReflectionUtils.qualifierOf(clazz));
         if (clazz.isInterface()) {
             bindings.computeIfAbsent(key, $ -> new HashSet<>());
@@ -185,20 +202,41 @@ public class InjectorImpl implements Injector {
         return bindings;
     }
 
+    public <T> Set<Binding<T>> getAllBindings(Class<T> clazz) {
+        return getBindings(Key.of(clazz));
+    }
+
     public <Q> Supplier<Q> getCompiledBinding(Dependency<Q> dep) {
+        Key<Q> key = dep.key();
+        Supplier<Q> originalSupplier = doGetCompiledBinding(dep);
+        return () -> {
+            checkCyclicDependency(key);
+            try {
+                return originalSupplier.get();
+            } finally {
+                removeFromResolutionStack(key);
+            }
+        };
+    }
+
+    public <Q> Supplier<Q> doGetCompiledBinding(Dependency<Q> dep) {
         Key<Q> key = dep.key();
         Set<Binding<Q>> res = getBindings(key);
         if (res != null && !res.isEmpty()) {
             List<Binding<Q>> bindingList = new ArrayList<>(res);
-            Comparator<Binding<Q>> comparing = Comparator.comparing(Binding::getPriority);
-            bindingList.sort(comparing.reversed());
+            bindingList.sort(getPriorityComparator());
             Binding<Q> binding = bindingList.get(0);
             return compile(binding);
         }
         if (key.getRawType() == List.class) {
             Set<Binding<Object>> res2 = getBindings(key.getTypeParameter(0));
             if (res2 != null) {
-                List<Supplier<Object>> list = res2.stream().map(this::compile).collect(Collectors.toList());
+                // Sort bindings by priority (highest first) for deterministic ordering
+                List<Binding<Object>> sortedBindings = new ArrayList<>(res2);
+                sortedBindings.sort(getPriorityComparator());
+
+                List<Supplier<Object>> list =
+                        sortedBindings.stream().map(this::compile).collect(Collectors.toList());
                 //noinspection unchecked
                 return () -> (Q) list(list, Supplier::get);
             }
@@ -241,8 +279,8 @@ public class InjectorImpl implements Injector {
         if (binding.getScope() != null) {
             Scope scope = scopes.entrySet().stream()
                     .filter(e -> e.getKey().isInstance(binding.getScope()))
-                    .map(Map.Entry::getValue)
                     .findFirst()
+                    .map(Map.Entry::getValue)
                     .orElseThrow(() -> new DIException("Scope not bound for annotation "
                             + binding.getScope().annotationType()))
                     .get();
@@ -379,12 +417,38 @@ public class InjectorImpl implements Injector {
         }
     }
 
+    private void checkCyclicDependency(Key<?> key) {
+        Set<Key<?>> stack = resolutionStack.get();
+        if (stack == null) {
+            stack = new LinkedHashSet<>();
+            resolutionStack.set(stack);
+        }
+        if (!stack.add(key)) {
+            throw new DIException("Cyclic dependency detected: "
+                    + stack.stream().map(Key::getDisplayString).collect(Collectors.joining(" -> "))
+                    + " -> "
+                    + key.getDisplayString());
+        }
+    }
+
+    private void removeFromResolutionStack(Key<?> key) {
+        Set<Key<?>> stack = resolutionStack.get();
+        if (stack != null) {
+            stack.remove(key);
+            if (stack.isEmpty()) {
+                resolutionStack.remove();
+            }
+        }
+    }
+
     private static class SingletonScope implements Scope {
         Map<Key<?>, java.util.function.Supplier<?>> cache = new ConcurrentHashMap<>();
 
+        @Nonnull
         @SuppressWarnings("unchecked")
         @Override
-        public <T> java.util.function.Supplier<T> scope(Key<T> key, java.util.function.Supplier<T> unscoped) {
+        public <T> java.util.function.Supplier<T> scope(
+                @Nonnull Key<T> key, @Nonnull java.util.function.Supplier<T> unscoped) {
             return (java.util.function.Supplier<T>)
                     cache.computeIfAbsent(key, k -> new java.util.function.Supplier<T>() {
                         volatile T instance;
@@ -402,5 +466,25 @@ public class InjectorImpl implements Injector {
                         }
                     });
         }
+    }
+
+    /**
+     * Release all internal state so this Injector can be GC’d
+     * (and so that subsequent tests start from a clean slate).
+     * @since 4.1
+     */
+    public void dispose() {
+        // First, clear any singleton‐scope caches
+        scopes.values().stream()
+                .map(Supplier::get)
+                .filter(scope -> scope instanceof SingletonScope)
+                .map(scope -> (SingletonScope) scope)
+                .forEach(singleton -> singleton.cache.clear());
+
+        // Now clear everything else
+        bindings.clear();
+        scopes.clear();
+        loadedUrls.clear();
+        resolutionStack.remove();
     }
 }

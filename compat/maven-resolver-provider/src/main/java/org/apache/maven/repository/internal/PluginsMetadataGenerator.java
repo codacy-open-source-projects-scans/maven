@@ -32,7 +32,7 @@ import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 
 import org.apache.maven.api.xml.XmlNode;
-import org.apache.maven.internal.xml.XmlNodeBuilder;
+import org.apache.maven.api.xml.XmlService;
 import org.apache.maven.repository.internal.PluginsMetadata.PluginInfo;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.Artifact;
@@ -81,10 +81,9 @@ class PluginsMetadataGenerator implements MetadataGenerator {
          */
         for (Iterator<? extends Metadata> it = metadatas.iterator(); it.hasNext(); ) {
             Metadata metadata = it.next();
-            if (metadata instanceof PluginsMetadata) {
+            if (metadata instanceof PluginsMetadata pluginsMetadata) {
                 it.remove();
-                PluginsMetadata pluginMetadata = (PluginsMetadata) metadata;
-                processedPlugins.put(pluginMetadata.getGroupId(), pluginMetadata);
+                processedPlugins.put(pluginsMetadata.getGroupId(), pluginsMetadata);
             }
         }
     }
@@ -136,7 +135,7 @@ class PluginsMetadataGenerator implements MetadataGenerator {
                             // as it would pull in dependency on:
                             // - maven-plugin-api (for model)
                             // - Plexus Container (for model supporting classes and exceptions)
-                            XmlNode root = XmlNodeBuilder.build(is, null);
+                            XmlNode root = XmlService.read(is, null);
                             String groupId = mayGetChild(root, "groupId");
                             String artifactId = mayGetChild(root, "artifactId");
                             String goalPrefix = mayGetChild(root, "goalPrefix");
@@ -169,9 +168,9 @@ class PluginsMetadataGenerator implements MetadataGenerator {
     }
 
     private static String mayGetChild(XmlNode node, String child) {
-        XmlNode c = node.getChild(child);
+        XmlNode c = node.child(child);
         if (c != null) {
-            return c.getValue();
+            return c.value();
         }
         return null;
     }

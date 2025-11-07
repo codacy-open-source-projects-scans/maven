@@ -35,11 +35,11 @@ import org.apache.maven.execution.DefaultMavenExecutionRequest;
 import org.apache.maven.execution.DefaultMavenExecutionResult;
 import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.execution.MavenSession;
+import org.apache.maven.impl.InternalSession;
+import org.apache.maven.impl.resolver.MavenSessionBuilderSupplier;
 import org.apache.maven.internal.impl.DefaultLookup;
 import org.apache.maven.internal.impl.DefaultSessionFactory;
 import org.apache.maven.internal.impl.InternalMavenSession;
-import org.apache.maven.internal.impl.InternalSession;
-import org.apache.maven.internal.impl.resolver.MavenSessionBuilderSupplier;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Exclusion;
@@ -169,7 +169,7 @@ public abstract class AbstractCoreMavenComponentTestCase {
         File localRepoDir = new File(projectBuildingRequest.getLocalRepository().getBasedir());
         LocalRepository localRepo = new LocalRepository(localRepoDir, "simple");
 
-        RepositorySystemSession session = new MavenSessionBuilderSupplier(repositorySystem)
+        RepositorySystemSession session = new MavenSessionBuilderSupplier(repositorySystem, true)
                 .get()
                 .withLocalRepositories(localRepo)
                 .build();
@@ -216,7 +216,7 @@ public abstract class AbstractCoreMavenComponentTestCase {
         repository.setReleases(policy);
         repository.setSnapshots(policy);
 
-        return Arrays.asList(mavenRepositorySystem.buildArtifactRepository(repository));
+        return Arrays.asList(MavenRepositorySystem.buildArtifactRepository(repository));
     }
 
     protected List<ArtifactRepository> getPluginArtifactRepositories() throws InvalidRepositoryException {

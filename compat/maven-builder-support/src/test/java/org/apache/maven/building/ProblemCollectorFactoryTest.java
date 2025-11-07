@@ -19,6 +19,7 @@
 package org.apache.maven.building;
 
 import java.util.Collections;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
@@ -37,5 +38,19 @@ class ProblemCollectorFactoryTest {
         assertNotSame(collector1, collector2);
         assertEquals(0, collector1.getProblems().size());
         assertEquals(1, collector2.getProblems().size());
+    }
+
+    @Test
+    void testAddProblem() {
+        ProblemCollector collector = ProblemCollectorFactory.newInstance(null);
+        collector.setSource("pom.xml");
+        collector.add(Problem.Severity.ERROR, "Error message", 10, 5, null);
+        collector.add(Problem.Severity.WARNING, "Warning message", 15, 3, null);
+
+        List<Problem> problems = collector.getProblems();
+        assertEquals(2, problems.size(), "Should collect both problems");
+        assertEquals(Problem.Severity.ERROR, problems.get(0).getSeverity(), "First problem should be ERROR");
+        assertEquals("Error message", problems.get(0).getMessage(), "First problem should have correct message");
+        assertEquals(Problem.Severity.WARNING, problems.get(1).getSeverity(), "Second problem should be WARNING");
     }
 }

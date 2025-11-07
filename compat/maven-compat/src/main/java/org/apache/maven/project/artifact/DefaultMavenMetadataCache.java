@@ -92,16 +92,14 @@ public class DefaultMavenMetadataCache implements MavenMetadataCache {
                 return true;
             }
 
-            if (!(o instanceof CacheKey)) {
+            if (o instanceof CacheKey other) {
+                return pomHash == other.pomHash
+                        && artifactEquals(artifact, other.artifact)
+                        && resolveManagedVersions == other.resolveManagedVersions
+                        && repositoriesEquals(repositories, other.repositories);
+            } else {
                 return false;
             }
-
-            CacheKey other = (CacheKey) o;
-
-            return pomHash == other.pomHash
-                    && artifactEquals(artifact, other.artifact)
-                    && resolveManagedVersions == other.resolveManagedVersions
-                    && repositoriesEquals(repositories, other.repositories);
         }
     }
 
@@ -264,6 +262,7 @@ public class DefaultMavenMetadataCache implements MavenMetadataCache {
         }
     }
 
+    @Override
     public ResolutionGroup get(
             Artifact artifact,
             boolean resolveManagedVersions,
@@ -290,6 +289,7 @@ public class DefaultMavenMetadataCache implements MavenMetadataCache {
         return null;
     }
 
+    @Override
     public void put(
             Artifact artifact,
             boolean resolveManagedVersions,
@@ -318,6 +318,7 @@ public class DefaultMavenMetadataCache implements MavenMetadataCache {
         cache.put(cacheKey, cacheRecord);
     }
 
+    @Override
     public void flush() {
         cache.clear();
     }

@@ -24,16 +24,35 @@ import org.junit.jupiter.api.Test;
 
 public class MavenITmng5805PkgTypeMojoConfiguration2 extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng5805PkgTypeMojoConfiguration2() {
-        super("(3.3.3,)");
-    }
-
     @Test
     public void testPkgTypeMojoConfiguration() throws Exception {
         File testDir = extractResources("/mng-5805-pkg-type-mojo-configuration2");
 
-        Verifier verifier;
+        // First, build the test plugin dependency
+        Verifier verifier = newVerifier(new File(testDir, "mng5805-plugin-dep").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
 
+        // Then, build the test extension2
+        verifier = newVerifier(new File(testDir, "mng5805-extension2").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Then, build the test plugin
+        verifier = newVerifier(new File(testDir, "mng5805-plugin").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Finally, run the test project
         verifier = newVerifier(testDir.getAbsolutePath());
         verifier.addCliArgument("validate");
         verifier.execute();

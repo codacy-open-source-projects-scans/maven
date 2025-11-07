@@ -19,8 +19,8 @@
 package org.apache.maven.api.services.model;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 
 import org.apache.maven.api.RemoteRepository;
 import org.apache.maven.api.Service;
@@ -30,6 +30,9 @@ import org.apache.maven.api.annotations.Nullable;
 import org.apache.maven.api.model.Dependency;
 import org.apache.maven.api.model.Parent;
 import org.apache.maven.api.services.ModelSource;
+import org.apache.maven.api.services.Request;
+import org.apache.maven.api.services.RequestTrace;
+import org.apache.maven.api.services.Result;
 
 /**
  * Resolves a POM from its coordinates.
@@ -47,21 +50,12 @@ public interface ModelResolver extends Service {
      * @throws ModelResolverException If the POM could not be resolved from any configured repository.
      */
     @Nonnull
-    default ModelSource resolveModel(
+    ModelSource resolveModel(
             @Nonnull Session session,
             @Nullable List<RemoteRepository> repositories,
             @Nonnull Parent parent,
             @Nonnull AtomicReference<Parent> modified)
-            throws ModelResolverException {
-        return resolveModel(
-                session,
-                repositories,
-                parent.getGroupId(),
-                parent.getArtifactId(),
-                parent.getVersion(),
-                null,
-                version -> modified.set(parent.withVersion(version)));
-    }
+            throws ModelResolverException;
 
     /**
      * Tries to resolve the POM for the specified dependency coordinates possibly updating {@code dependency}.
@@ -74,30 +68,81 @@ public interface ModelResolver extends Service {
      * @throws ModelResolverException If the POM could not be resolved from any configured repository.
      */
     @Nonnull
-    default ModelSource resolveModel(
+    ModelSource resolveModel(
             @Nonnull Session session,
             @Nullable List<RemoteRepository> repositories,
             @Nonnull Dependency dependency,
             @Nonnull AtomicReference<Dependency> modified)
-            throws ModelResolverException {
-        return resolveModel(
-                session,
-                repositories,
-                dependency.getGroupId(),
-                dependency.getArtifactId(),
-                dependency.getVersion(),
-                dependency.getClassifier(),
-                version -> modified.set(dependency.withVersion(version)));
-    }
+            throws ModelResolverException;
 
     @Nonnull
-    ModelSource resolveModel(
+    ModelResolverResult resolveModel(@Nonnull ModelResolverRequest request) throws ModelResolverException;
+
+    record ModelResolverRequest(
             @Nonnull Session session,
+            @Nullable RequestTrace trace,
             @Nullable List<RemoteRepository> repositories,
             @Nonnull String groupId,
             @Nonnull String artifactId,
             @Nonnull String version,
             @Nullable String classifier,
-            @Nonnull Consumer<String> resolvedVersion)
-            throws ModelResolverException;
+            @Nullable String extension)
+            implements Request<Session> {
+        public ModelResolverRequest {
+            Objects.requireNonNull(session, "session cannot be null");
+            Objects.requireNonNull(groupId, "groupId cannot be null");
+            Objects.requireNonNull(artifactId, "artifactId cannot be null");
+            Objects.requireNonNull(version, "version cannot be null");
+        }
+
+        @Nonnull
+        @Override
+        public Session getSession() {
+            return session;
+        }
+
+        @Nullable
+        @Override
+        public RequestTrace getTrace() {
+            return trace;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return o instanceof ModelResolverRequest that
+                    && repositories == that.repositories
+                    && Objects.equals(groupId, that.groupId)
+                    && Objects.equals(artifactId, that.artifactId)
+                    && Objects.equals(version, that.version)
+                    && Objects.equals(classifier, that.classifier)
+                    && Objects.equals(extension, that.extension);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(repositories, groupId, artifactId, version, classifier, extension);
+        }
+
+        @Override
+        @Nonnull
+        public String toString() {
+            return getClass().getSimpleName() + "[" + "repositories="
+                    + repositories + ", groupId="
+                    + groupId
+                    + ", artifactId=" + artifactId
+                    + ", version=" + version
+                    + ", classifier=" + classifier
+                    + ", extension=" + extension
+                    + ']';
+        }
+    }
+
+    record ModelResolverResult(ModelResolverRequest request, ModelSource source, String version)
+            implements Result<ModelResolverRequest> {
+        @Nonnull
+        @Override
+        public ModelResolverRequest getRequest() {
+            return request;
+        }
+    }
 }

@@ -34,22 +34,23 @@ under the License.
     <dependency>
       <groupId>org.apache.maven</groupId>
       <artifactId>maven-executor</artifactId>
-      <version>${maven-version}</version>
+      <!-- Version inherited from parent dependency management -->
     </dependency>
 
     <!-- needed for VersionRange and Version -->
     <dependency>
       <groupId>org.apache.maven</groupId>
       <artifactId>maven-artifact</artifactId>
-      <version>3.6.3</version>
+      <!-- Version inherited from parent dependency management -->
     </dependency>
     <dependency>
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-utils</artifactId>
+      <version>${plexusUtilsVersion}</version>
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter</artifactId>
+      <artifactId>junit-jupiter-api</artifactId>
     </dependency>
   </dependencies>
 

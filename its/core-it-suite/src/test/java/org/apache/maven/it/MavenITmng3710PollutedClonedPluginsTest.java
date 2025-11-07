@@ -33,14 +33,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author <a href="mailto:brianf@apache.org">Brian Fox</a>
  * @author jdcasey
  *
+ * @since 2.0.8
+ *
  */
 public class MavenITmng3710PollutedClonedPluginsTest extends AbstractMavenIntegrationTestCase {
-    public MavenITmng3710PollutedClonedPluginsTest() {
-        super("(2.0.8,)"); // only test in 2.0.9+
-    }
 
     @Test
-    public void testitMNG3710_POMInheritance() throws Exception {
+    public void testitMNG3710POMInheritance() throws Exception {
         File testDir = extractResources("/mng-3710/pom-inheritance");
         File pluginDir = new File(testDir, "maven-mng3710-pomInheritance-plugin");
         File projectsDir = new File(testDir, "projects");
@@ -70,7 +69,7 @@ public class MavenITmng3710PollutedClonedPluginsTest extends AbstractMavenIntegr
     }
 
     @Test
-    public void testitMNG3710_OriginalModel() throws Exception {
+    public void testitMNG3710OriginalModel() throws Exception {
         File testDir = extractResources("/mng-3710/original-model");
         File pluginsDir = new File(testDir, "plugins");
         File projectDir = new File(testDir, "project");

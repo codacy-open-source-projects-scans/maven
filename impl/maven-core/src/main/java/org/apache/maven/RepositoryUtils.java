@@ -34,7 +34,7 @@ import org.apache.maven.artifact.handler.DefaultArtifactHandler;
 import org.apache.maven.artifact.handler.manager.ArtifactHandlerManager;
 import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.artifact.repository.ArtifactRepositoryPolicy;
-import org.apache.maven.internal.impl.resolver.artifact.MavenArtifactProperties;
+import org.apache.maven.impl.resolver.artifact.MavenArtifactProperties;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
@@ -259,13 +259,15 @@ public class RepositoryUtils {
     }
 
     public static ArtifactType newArtifactType(String id, ArtifactHandler handler) {
-        return new DefaultArtifactType(
-                id,
-                handler.getExtension(),
-                handler.getClassifier(),
-                handler.getLanguage(),
-                handler.isAddedToClasspath(),
-                handler.isIncludesDependencies());
+        return handler != null
+                ? new DefaultArtifactType(
+                        id,
+                        handler.getExtension(),
+                        handler.getClassifier(),
+                        handler.getLanguage(),
+                        handler.isAddedToClasspath(),
+                        handler.isIncludesDependencies())
+                : null;
     }
 
     public static Dependency toDependency(
@@ -275,8 +277,8 @@ public class RepositoryUtils {
             stereotype = new DefaultArtifactType(dependency.getType());
         }
 
-        boolean system =
-                dependency.getSystemPath() != null && dependency.getSystemPath().length() > 0;
+        boolean system = dependency.getSystemPath() != null
+                && !dependency.getSystemPath().isEmpty();
 
         Map<String, String> props = null;
         if (system) {
@@ -307,22 +309,12 @@ public class RepositoryUtils {
         return new Exclusion(exclusion.getGroupId(), exclusion.getArtifactId(), "*", "*");
     }
 
+    /**
+     * @deprecated Use by maven-artifact-transfer.
+     */
+    @Deprecated
     public static ArtifactTypeRegistry newArtifactTypeRegistry(ArtifactHandlerManager handlerManager) {
-        return new MavenArtifactTypeRegistry(handlerManager);
-    }
-
-    static class MavenArtifactTypeRegistry implements ArtifactTypeRegistry {
-
-        private final ArtifactHandlerManager handlerManager;
-
-        MavenArtifactTypeRegistry(ArtifactHandlerManager handlerManager) {
-            this.handlerManager = handlerManager;
-        }
-
-        public ArtifactType get(String stereotypeId) {
-            ArtifactHandler handler = handlerManager.getArtifactHandler(stereotypeId);
-            return newArtifactType(stereotypeId, handler);
-        }
+        return typeId -> newArtifactType(typeId, handlerManager.getArtifactHandler(typeId));
     }
 
     public static Collection<Artifact> toArtifacts(Collection<org.apache.maven.artifact.Artifact> artifactsToConvert) {

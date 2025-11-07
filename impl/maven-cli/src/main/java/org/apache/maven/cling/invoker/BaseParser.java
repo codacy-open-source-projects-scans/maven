@@ -22,7 +22,6 @@ import javax.xml.stream.XMLStreamException;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -30,32 +29,39 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
-import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
 import org.apache.maven.api.Constants;
 import org.apache.maven.api.annotations.Nullable;
+import org.apache.maven.api.cli.CoreExtensions;
 import org.apache.maven.api.cli.InvokerRequest;
 import org.apache.maven.api.cli.Options;
 import org.apache.maven.api.cli.Parser;
-import org.apache.maven.api.cli.ParserException;
 import org.apache.maven.api.cli.ParserRequest;
+import org.apache.maven.api.cli.cisupport.CIInfo;
 import org.apache.maven.api.cli.extensions.CoreExtension;
+import org.apache.maven.api.cli.extensions.InputLocation;
+import org.apache.maven.api.cli.extensions.InputSource;
+import org.apache.maven.api.services.Interpolator;
 import org.apache.maven.cling.internal.extension.io.CoreExtensionsStaxReader;
+import org.apache.maven.cling.invoker.cisupport.CIDetectorHelper;
 import org.apache.maven.cling.props.MavenPropertiesLoader;
 import org.apache.maven.cling.utils.CLIReportingUtils;
 import org.apache.maven.properties.internal.EnvironmentUtils;
 import org.apache.maven.properties.internal.SystemProperties;
 
 import static java.util.Objects.requireNonNull;
-import static org.apache.maven.cling.invoker.Utils.getCanonicalPath;
-import static org.apache.maven.cling.invoker.Utils.or;
-import static org.apache.maven.cling.invoker.Utils.prefix;
-import static org.apache.maven.cling.invoker.Utils.stripLeadingAndTrailingQuotes;
-import static org.apache.maven.cling.invoker.Utils.toMap;
+import static org.apache.maven.cling.invoker.CliUtils.createInterpolator;
+import static org.apache.maven.cling.invoker.CliUtils.getCanonicalPath;
+import static org.apache.maven.cling.invoker.CliUtils.or;
+import static org.apache.maven.cling.invoker.CliUtils.prefix;
+import static org.apache.maven.cling.invoker.CliUtils.stripLeadingAndTrailingQuotes;
+import static org.apache.maven.cling.invoker.CliUtils.toMap;
 
 public abstract class BaseParser implements Parser {
 
@@ -69,6 +75,7 @@ public abstract class BaseParser implements Parser {
             this.systemPropertiesOverrides = new HashMap<>();
         }
 
+        public boolean parsingFailed = false;
         public Path cwd;
         public Path installationDirectory;
         public Path userHomeDirectory;
@@ -79,7 +86,13 @@ public abstract class BaseParser implements Parser {
         @Nullable
         public Path rootDirectory;
 
-        public List<CoreExtension> extensions;
+        @Nullable
+        public List<CoreExtensions> extensions;
+
+        @Nullable
+        public CIInfo ciInfo;
+
+        @Nullable
         public Options options;
 
         public Map<String, String> extraInterpolationSource() {
@@ -93,47 +106,169 @@ public abstract class BaseParser implements Parser {
     }
 
     @Override
-    public InvokerRequest parseInvocation(ParserRequest parserRequest) throws ParserException, IOException {
+    public InvokerRequest parseInvocation(ParserRequest parserRequest) {
         requireNonNull(parserRequest);
 
         LocalContext context = new LocalContext(parserRequest);
 
         // the basics
-        context.cwd = requireNonNull(getCwd(context));
-        context.installationDirectory = requireNonNull(getInstallationDirectory(context));
-        context.userHomeDirectory = requireNonNull(getUserHomeDirectory(context));
+        try {
+            context.cwd = getCwd(context);
+        } catch (Exception e) {
+            context.parsingFailed = true;
+            context.cwd = getCanonicalPath(Paths.get("."));
+            parserRequest.logger().error("Error determining working directory", e);
+        }
+        try {
+            context.installationDirectory = getInstallationDirectory(context);
+        } catch (Exception e) {
+            context.parsingFailed = true;
+            context.installationDirectory = context.cwd;
+            parserRequest.logger().error("Error determining installation directory", e);
+        }
+        try {
+            context.userHomeDirectory = getUserHomeDirectory(context);
+        } catch (Exception e) {
+            context.parsingFailed = true;
+            context.userHomeDirectory = context.cwd;
+            parserRequest.logger().error("Error determining user home directory", e);
+        }
 
         // top/root
-        context.topDirectory = requireNonNull(getTopDirectory(context));
-        context.rootDirectory = getRootDirectory(context);
+        try {
+            context.topDirectory = getTopDirectory(context);
+        } catch (Exception e) {
+            context.parsingFailed = true;
+            context.topDirectory = context.cwd;
+            parserRequest.logger().error("Error determining top directory", e);
+        }
+        try {
+            context.rootDirectory = getRootDirectory(context);
+        } catch (Exception e) {
+            context.parsingFailed = true;
+            context.rootDirectory = context.cwd;
+            parserRequest.logger().error("Error determining root directory", e);
+        }
 
         // options
-        List<Options> parsedOptions = parseCliOptions(context);
-
-        // warn about deprecated options
-        PrintWriter printWriter = new PrintWriter(parserRequest.out() != null ? parserRequest.out() : System.out, true);
-        parsedOptions.forEach(o -> o.warnAboutDeprecatedOptions(parserRequest, printWriter::println));
-
-        // assemble options if needed
-        context.options = assembleOptions(parsedOptions);
+        try {
+            context.options = parseCliOptions(context);
+        } catch (Exception e) {
+            context.parsingFailed = true;
+            context.options = null;
+            parserRequest.logger().error("Error parsing program arguments", e);
+        }
 
         // system and user properties
-        context.systemProperties = populateSystemProperties(context);
-        context.userProperties = populateUserProperties(context);
+        try {
+            context.systemProperties = populateSystemProperties(context);
+        } catch (Exception e) {
+            context.parsingFailed = true;
+            context.systemProperties = new HashMap<>();
+            parserRequest.logger().error("Error populating system properties", e);
+        }
+        try {
+            context.userProperties = populateUserProperties(context);
+        } catch (Exception e) {
+            context.parsingFailed = true;
+            context.userProperties = new HashMap<>();
+            parserRequest.logger().error("Error populating user properties", e);
+        }
 
         // options: interpolate
-        context.options = context.options.interpolate(
-                Arrays.asList(context.extraInterpolationSource(), context.userProperties, context.systemProperties));
+        if (context.options != null) {
+            context.options = context.options.interpolate(Interpolator.chain(
+                    context.extraInterpolationSource()::get,
+                    context.userProperties::get,
+                    context.systemProperties::get));
+        }
 
+        // below we use effective properties as both system + user are present
         // core extensions
-        context.extensions = readCoreExtensionsDescriptor(context);
+        try {
+            context.extensions = readCoreExtensionsDescriptor(context);
+        } catch (Exception e) {
+            context.parsingFailed = true;
+            parserRequest.logger().error("Error reading core extensions descriptor", e);
+        }
+
+        // CI detection
+        context.ciInfo = detectCI(context);
+
+        // only if not failed so far; otherwise we may have no options to validate
+        if (!context.parsingFailed) {
+            validate(context);
+        }
 
         return getInvokerRequest(context);
     }
 
-    protected abstract InvokerRequest getInvokerRequest(LocalContext context);
+    protected void validate(LocalContext context) {
+        Options options = context.options;
 
-    protected Path getCwd(LocalContext context) throws ParserException {
+        options.failOnSeverity().ifPresent(severity -> {
+            String c = severity.toLowerCase(Locale.ENGLISH);
+            if (!Arrays.asList("warn", "warning", "error").contains(c)) {
+                context.parsingFailed = true;
+                context.parserRequest
+                        .logger()
+                        .error("Invalid fail on severity threshold '" + c
+                                + "'. Supported values are 'WARN', 'WARNING' and 'ERROR'.");
+            }
+        });
+        options.altUserSettings()
+                .ifPresent(userSettings ->
+                        failIfFileNotExists(context, userSettings, "The specified user settings file does not exist"));
+        options.altProjectSettings()
+                .ifPresent(projectSettings -> failIfFileNotExists(
+                        context, projectSettings, "The specified project settings file does not exist"));
+        options.altInstallationSettings()
+                .ifPresent(installationSettings -> failIfFileNotExists(
+                        context, installationSettings, "The specified installation settings file does not exist"));
+        options.altUserToolchains()
+                .ifPresent(userToolchains -> failIfFileNotExists(
+                        context, userToolchains, "The specified user toolchains file does not exist"));
+        options.altInstallationToolchains()
+                .ifPresent(installationToolchains -> failIfFileNotExists(
+                        context, installationToolchains, "The specified installation toolchains file does not exist"));
+        options.color().ifPresent(color -> {
+            String c = color.toLowerCase(Locale.ENGLISH);
+            if (!Arrays.asList("always", "yes", "force", "never", "no", "none", "auto", "tty", "if-tty")
+                    .contains(c)) {
+                context.parsingFailed = true;
+                context.parserRequest
+                        .logger()
+                        .error("Invalid color configuration value '" + c
+                                + "'. Supported values are 'auto', 'always', 'never'.");
+            }
+        });
+    }
+
+    protected void failIfFileNotExists(LocalContext context, String fileName, String message) {
+        Path path = context.cwd.resolve(fileName);
+        if (!Files.isRegularFile(path)) {
+            context.parsingFailed = true;
+            context.parserRequest.logger().error(message + ": " + path);
+        }
+    }
+
+    protected InvokerRequest getInvokerRequest(LocalContext context) {
+        return new BaseInvokerRequest(
+                context.parserRequest,
+                context.parsingFailed,
+                context.cwd,
+                context.installationDirectory,
+                context.userHomeDirectory,
+                context.userProperties,
+                context.systemProperties,
+                context.topDirectory,
+                context.rootDirectory,
+                context.extensions,
+                context.ciInfo,
+                context.options);
+    }
+
+    protected Path getCwd(LocalContext context) {
         if (context.parserRequest.cwd() != null) {
             Path result = getCanonicalPath(context.parserRequest.cwd());
             context.systemPropertiesOverrides.put("user.dir", result.toString());
@@ -145,7 +280,7 @@ public abstract class BaseParser implements Parser {
         }
     }
 
-    protected Path getInstallationDirectory(LocalContext context) throws ParserException {
+    protected Path getInstallationDirectory(LocalContext context) {
         if (context.parserRequest.mavenHome() != null) {
             Path result = getCanonicalPath(context.parserRequest.mavenHome());
             context.systemPropertiesOverrides.put(Constants.MAVEN_HOME, result.toString());
@@ -153,7 +288,8 @@ public abstract class BaseParser implements Parser {
         } else {
             String mavenHome = System.getProperty(Constants.MAVEN_HOME);
             if (mavenHome == null) {
-                throw new ParserException("local mode requires " + Constants.MAVEN_HOME + " Java System Property set");
+                throw new IllegalStateException(
+                        "local mode requires " + Constants.MAVEN_HOME + " Java System Property set");
             }
             Path result = getCanonicalPath(Paths.get(mavenHome));
             mayOverrideDirectorySystemProperty(context, Constants.MAVEN_HOME, result);
@@ -161,7 +297,7 @@ public abstract class BaseParser implements Parser {
         }
     }
 
-    protected Path getUserHomeDirectory(LocalContext context) throws ParserException {
+    protected Path getUserHomeDirectory(LocalContext context) {
         if (context.parserRequest.userHome() != null) {
             Path result = getCanonicalPath(context.parserRequest.userHome());
             context.systemPropertiesOverrides.put("user.home", result.toString());
@@ -184,7 +320,7 @@ public abstract class BaseParser implements Parser {
         }
     }
 
-    protected Path getTopDirectory(LocalContext context) throws ParserException {
+    protected Path getTopDirectory(LocalContext context) {
         // We need to locate the top level project which may be pointed at using
         // the -f/--file option.
         Path topDirectory = requireNonNull(context.cwd);
@@ -198,11 +334,11 @@ public abstract class BaseParser implements Parser {
                 } else if (Files.isRegularFile(path)) {
                     topDirectory = path.getParent();
                     if (!Files.isDirectory(topDirectory)) {
-                        throw new ParserException("Directory " + topDirectory
+                        throw new IllegalArgumentException("Directory " + topDirectory
                                 + " extracted from the -f/--file command-line argument " + arg + " does not exist");
                     }
                 } else {
-                    throw new ParserException(
+                    throw new IllegalArgumentException(
                             "POM file " + arg + " specified with the -f/--file command line argument does not exist");
                 }
                 break;
@@ -215,11 +351,11 @@ public abstract class BaseParser implements Parser {
     }
 
     @Nullable
-    protected Path getRootDirectory(LocalContext context) throws ParserException {
-        return Utils.findRoot(context.topDirectory);
+    protected Path getRootDirectory(LocalContext context) {
+        return CliUtils.findRoot(context.topDirectory);
     }
 
-    protected Map<String, String> populateSystemProperties(LocalContext context) throws ParserException {
+    protected Map<String, String> populateSystemProperties(LocalContext context) {
         Properties systemProperties = new Properties();
 
         // ----------------------------------------------------------------------
@@ -228,6 +364,7 @@ public abstract class BaseParser implements Parser {
 
         EnvironmentUtils.addEnvVars(systemProperties);
         SystemProperties.addSystemProperties(systemProperties);
+        systemProperties.putAll(context.systemPropertiesOverrides);
 
         // ----------------------------------------------------------------------
         // Properties containing info about the currently running version of Maven
@@ -237,18 +374,60 @@ public abstract class BaseParser implements Parser {
         Properties buildProperties = CLIReportingUtils.getBuildProperties();
 
         String mavenVersion = buildProperties.getProperty(CLIReportingUtils.BUILD_VERSION_PROPERTY);
-        systemProperties.setProperty("maven.version", mavenVersion);
+        systemProperties.setProperty(Constants.MAVEN_VERSION, mavenVersion);
+
+        boolean snapshot = mavenVersion.endsWith("SNAPSHOT");
+        if (snapshot) {
+            mavenVersion = mavenVersion.substring(0, mavenVersion.length() - "SNAPSHOT".length());
+            if (mavenVersion.endsWith("-")) {
+                mavenVersion = mavenVersion.substring(0, mavenVersion.length() - 1);
+            }
+        }
+        String[] versionElements = mavenVersion.split("\\.");
+        if (versionElements.length != 3) {
+            throw new IllegalStateException("Maven version is expected to have 3 segments: '" + mavenVersion + "'");
+        }
+        systemProperties.setProperty(Constants.MAVEN_VERSION_MAJOR, versionElements[0]);
+        systemProperties.setProperty(Constants.MAVEN_VERSION_MINOR, versionElements[1]);
+        systemProperties.setProperty(Constants.MAVEN_VERSION_PATCH, versionElements[2]);
+        systemProperties.setProperty(Constants.MAVEN_VERSION_SNAPSHOT, Boolean.toString(snapshot));
 
         String mavenBuildVersion = CLIReportingUtils.createMavenVersionString(buildProperties);
-        systemProperties.setProperty("maven.build.version", mavenBuildVersion);
+        systemProperties.setProperty(Constants.MAVEN_BUILD_VERSION, mavenBuildVersion);
+
+        Path mavenConf;
+        if (systemProperties.getProperty(Constants.MAVEN_INSTALLATION_CONF) != null) {
+            mavenConf = context.installationDirectory.resolve(
+                    systemProperties.getProperty(Constants.MAVEN_INSTALLATION_CONF));
+        } else if (systemProperties.getProperty("maven.conf") != null) {
+            mavenConf = context.installationDirectory.resolve(systemProperties.getProperty("maven.conf"));
+        } else if (systemProperties.getProperty(Constants.MAVEN_HOME) != null) {
+            mavenConf = context.installationDirectory
+                    .resolve(systemProperties.getProperty(Constants.MAVEN_HOME))
+                    .resolve("conf");
+        } else {
+            mavenConf = context.installationDirectory.resolve("");
+        }
+
+        UnaryOperator<String> callback = or(
+                context.extraInterpolationSource()::get,
+                context.systemPropertiesOverrides::get,
+                systemProperties::getProperty);
+        Path propertiesFile = mavenConf.resolve("maven-system.properties");
+        try {
+            MavenPropertiesLoader.loadProperties(systemProperties, propertiesFile, callback, false);
+        } catch (IOException e) {
+            throw new IllegalStateException("Error loading properties from " + propertiesFile, e);
+        }
 
         Map<String, String> result = toMap(systemProperties);
         result.putAll(context.systemPropertiesOverrides);
         return result;
     }
 
-    protected Map<String, String> populateUserProperties(LocalContext context) throws ParserException, IOException {
+    protected Map<String, String> populateUserProperties(LocalContext context) {
         Properties userProperties = new Properties();
+        Map<String, String> paths = context.extraInterpolationSource();
 
         // ----------------------------------------------------------------------
         // Options that are set on the command line become system properties
@@ -256,14 +435,15 @@ public abstract class BaseParser implements Parser {
         // are most dominant.
         // ----------------------------------------------------------------------
 
-        Map<String, String> userSpecifiedProperties =
-                context.options.userProperties().orElse(new HashMap<>());
+        Map<String, String> userSpecifiedProperties = context.options != null
+                ? new HashMap<>(context.options.userProperties().orElse(new HashMap<>()))
+                : new HashMap<>();
+        createInterpolator().interpolate(userSpecifiedProperties, paths::get);
 
         // ----------------------------------------------------------------------
         // Load config files
         // ----------------------------------------------------------------------
-        Map<String, String> paths = context.extraInterpolationSource();
-        Function<String, String> callback =
+        UnaryOperator<String> callback =
                 or(paths::get, prefix("cli.", userSpecifiedProperties::get), context.systemProperties::get);
 
         Path mavenConf;
@@ -279,8 +459,12 @@ public abstract class BaseParser implements Parser {
         } else {
             mavenConf = context.installationDirectory.resolve("");
         }
-        Path propertiesFile = mavenConf.resolve("maven.properties");
-        MavenPropertiesLoader.loadProperties(userProperties, propertiesFile, callback, false);
+        Path propertiesFile = mavenConf.resolve("maven-user.properties");
+        try {
+            MavenPropertiesLoader.loadProperties(userProperties, propertiesFile, callback, false);
+        } catch (IOException e) {
+            throw new IllegalStateException("Error loading properties from " + propertiesFile, e);
+        }
 
         // CLI specified properties are most dominant
         userProperties.putAll(userSpecifiedProperties);
@@ -288,54 +472,107 @@ public abstract class BaseParser implements Parser {
         return toMap(userProperties);
     }
 
-    protected abstract List<Options> parseCliOptions(LocalContext context) throws ParserException, IOException;
+    protected abstract Options parseCliOptions(LocalContext context);
 
-    protected abstract Options assembleOptions(List<Options> parsedOptions);
+    /**
+     * Important: This method must return list of {@link CoreExtensions} in precedence order.
+     */
+    protected List<CoreExtensions> readCoreExtensionsDescriptor(LocalContext context) {
+        ArrayList<CoreExtensions> result = new ArrayList<>();
+        Path file;
+        List<CoreExtension> loaded;
 
-    protected List<CoreExtension> readCoreExtensionsDescriptor(LocalContext context)
-            throws ParserException, IOException {
-        ArrayList<CoreExtension> extensions = new ArrayList<>();
-        String installationExtensionsFile = context.userProperties.get(Constants.MAVEN_INSTALLATION_EXTENSIONS);
-        extensions.addAll(readCoreExtensionsDescriptorFromFile(
-                context.installationDirectory.resolve(installationExtensionsFile)));
+        Map<String, String> eff = new HashMap<>(context.systemProperties);
+        eff.putAll(context.userProperties);
 
-        String projectExtensionsFile = context.userProperties.get(Constants.MAVEN_PROJECT_EXTENSIONS);
-        extensions.addAll(readCoreExtensionsDescriptorFromFile(context.cwd.resolve(projectExtensionsFile)));
+        // project
+        file = context.cwd.resolve(eff.get(Constants.MAVEN_PROJECT_EXTENSIONS));
+        loaded = readCoreExtensionsDescriptorFromFile(file, false);
+        if (!loaded.isEmpty()) {
+            result.add(new CoreExtensions(file, loaded));
+        }
 
-        String userExtensionsFile = context.userProperties.get(Constants.MAVEN_USER_EXTENSIONS);
-        extensions.addAll(readCoreExtensionsDescriptorFromFile(context.userHomeDirectory.resolve(userExtensionsFile)));
+        // user
+        file = context.userHomeDirectory.resolve(eff.get(Constants.MAVEN_USER_EXTENSIONS));
+        loaded = readCoreExtensionsDescriptorFromFile(file, true);
+        if (!loaded.isEmpty()) {
+            result.add(new CoreExtensions(file, loaded));
+        }
 
-        return extensions;
+        // installation
+        file = context.installationDirectory.resolve(eff.get(Constants.MAVEN_INSTALLATION_EXTENSIONS));
+        loaded = readCoreExtensionsDescriptorFromFile(file, true);
+        if (!loaded.isEmpty()) {
+            result.add(new CoreExtensions(file, loaded));
+        }
+
+        return result.isEmpty() ? null : List.copyOf(result);
     }
 
-    protected List<CoreExtension> readCoreExtensionsDescriptorFromFile(Path extensionsFile)
-            throws ParserException, IOException {
+    protected List<CoreExtension> readCoreExtensionsDescriptorFromFile(Path extensionsFile, boolean allowMetaVersions) {
         try {
             if (extensionsFile != null && Files.exists(extensionsFile)) {
                 try (InputStream is = Files.newInputStream(extensionsFile)) {
-                    return new CoreExtensionsStaxReader().read(is, true).getExtensions();
+                    return validateCoreExtensionsDescriptorFromFile(
+                            extensionsFile,
+                            List.copyOf(new CoreExtensionsStaxReader()
+                                    .read(is, true, InputSource.of(extensionsFile.toString()))
+                                    .getExtensions()),
+                            allowMetaVersions);
                 }
             }
             return List.of();
-        } catch (XMLStreamException e) {
-            throw new ParserException("Failed to parse extensions file: " + extensionsFile, e);
+        } catch (XMLStreamException | IOException e) {
+            throw new IllegalArgumentException("Failed to parse extensions file: " + extensionsFile, e);
         }
     }
 
-    protected List<String> getJvmArguments(Path rootDirectory) throws ParserException {
-        if (rootDirectory != null) {
-            Path jvmConfig = rootDirectory.resolve(".mvn/jvm.config");
-            if (Files.exists(jvmConfig)) {
-                try {
-                    return Files.readAllLines(jvmConfig).stream()
-                            .filter(l -> !l.isBlank() && !l.startsWith("#"))
-                            .flatMap(l -> Arrays.stream(l.split(" ")))
-                            .collect(Collectors.toList());
-                } catch (IOException e) {
-                    throw new ParserException("Failed to read JVM configuration file: " + jvmConfig, e);
-                }
+    protected List<CoreExtension> validateCoreExtensionsDescriptorFromFile(
+            Path extensionFile, List<CoreExtension> coreExtensions, boolean allowMetaVersions) {
+        Map<String, List<InputLocation>> gasLocations = new HashMap<>();
+        Map<String, List<InputLocation>> metaVersionLocations = new HashMap<>();
+        for (CoreExtension coreExtension : coreExtensions) {
+            String ga = coreExtension.getGroupId() + ":" + coreExtension.getArtifactId();
+            InputLocation location = coreExtension.getLocation("");
+            gasLocations.computeIfAbsent(ga, k -> new ArrayList<>()).add(location);
+            // TODO: metaversions could be extensible enum with these two values out of the box
+            if ("LATEST".equals(coreExtension.getVersion()) || "RELEASE".equals(coreExtension.getVersion())) {
+                metaVersionLocations.computeIfAbsent(ga, k -> new ArrayList<>()).add(location);
             }
         }
-        return null;
+        if (gasLocations.values().stream().anyMatch(l -> l.size() > 1)) {
+            throw new IllegalStateException("Extension conflicts in file " + extensionFile + ": "
+                    + gasLocations.entrySet().stream()
+                            .map(e -> e.getKey() + " defined on lines "
+                                    + e.getValue().stream()
+                                            .map(l -> String.valueOf(l.getLineNumber()))
+                                            .collect(Collectors.joining(", ")))
+                            .collect(Collectors.joining("; ")));
+        }
+        if (!allowMetaVersions && !metaVersionLocations.isEmpty()) {
+            throw new IllegalStateException("Extension with illegal version in file " + extensionFile + ": "
+                    + metaVersionLocations.entrySet().stream()
+                            .map(e -> e.getKey() + " defined on lines "
+                                    + e.getValue().stream()
+                                            .map(l -> String.valueOf(l.getLineNumber()))
+                                            .collect(Collectors.joining(", ")))
+                            .collect(Collectors.joining("; ")));
+        }
+        return coreExtensions;
+    }
+
+    @Nullable
+    protected CIInfo detectCI(LocalContext context) {
+        List<CIInfo> detected = CIDetectorHelper.detectCI();
+        if (detected.isEmpty()) {
+            return null;
+        } else if (detected.size() > 1) {
+            // warn
+            context.parserRequest
+                    .logger()
+                    .warn("Multiple CI systems detected: "
+                            + detected.stream().map(CIInfo::name).collect(Collectors.joining(", ")));
+        }
+        return detected.get(0);
     }
 }

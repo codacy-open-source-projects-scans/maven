@@ -18,8 +18,6 @@
  */
 package org.apache.maven.api.services;
 
-import java.io.Serial;
-
 import org.apache.maven.api.annotations.Experimental;
 
 /**
@@ -30,14 +28,19 @@ import org.apache.maven.api.annotations.Experimental;
 @Experimental
 public class ArtifactResolverException extends MavenException {
 
-    @Serial
-    private static final long serialVersionUID = 7252294837746943917L;
+    private final ArtifactResolverResult result;
 
     /**
      * @param message the message for the exception
      * @param e the exception itself
+     * @param result the resolution result containing detailed information
      */
-    public ArtifactResolverException(String message, Exception e) {
+    public ArtifactResolverException(String message, Exception e, ArtifactResolverResult result) {
         super(message, e);
+        this.result = result;
+    }
+
+    public ArtifactResolverResult getResult() {
+        return result;
     }
 }

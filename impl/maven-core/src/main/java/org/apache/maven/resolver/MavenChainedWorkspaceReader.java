@@ -29,7 +29,7 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.apache.maven.api.model.Model;
-import org.apache.maven.internal.impl.resolver.MavenWorkspaceReader;
+import org.apache.maven.impl.resolver.MavenWorkspaceReader;
 import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.repository.WorkspaceReader;
 import org.eclipse.aether.repository.WorkspaceRepository;
@@ -67,8 +67,8 @@ public class MavenChainedWorkspaceReader implements MavenWorkspaceReader {
         Model model = null;
 
         for (WorkspaceReader workspaceReader : readers) {
-            if (workspaceReader instanceof MavenWorkspaceReader) {
-                model = ((MavenWorkspaceReader) workspaceReader).findModel(artifact);
+            if (workspaceReader instanceof MavenWorkspaceReader mavenWorkspaceReader) {
+                model = mavenWorkspaceReader.findModel(artifact);
                 if (model != null) {
                     break;
                 }
@@ -138,6 +138,7 @@ public class MavenChainedWorkspaceReader implements MavenWorkspaceReader {
             return type;
         }
 
+        @Override
         public boolean equals(Object obj) {
             if (this == obj) {
                 return true;
@@ -146,6 +147,7 @@ public class MavenChainedWorkspaceReader implements MavenWorkspaceReader {
             }
         }
 
+        @Override
         public int hashCode() {
             return this.keys.hashCode();
         }

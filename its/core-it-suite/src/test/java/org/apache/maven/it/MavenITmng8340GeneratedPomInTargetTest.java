@@ -19,7 +19,6 @@
 package org.apache.maven.it;
 
 import java.io.File;
-import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
@@ -27,10 +26,6 @@ import org.junit.jupiter.api.Test;
  * This is a test set for <a href="https://issues.apache.org/jira/browse/MNG-8340">MNG-8340</a>.
  */
 class MavenITmng8340GeneratedPomInTargetTest extends AbstractMavenIntegrationTestCase {
-
-    MavenITmng8340GeneratedPomInTargetTest() {
-        super("[3.8.6,4.0.0-beta-5),[4.0.0-beta-6,)");
-    }
 
     /**
      *  Verify that the build succeeds.
@@ -44,7 +39,6 @@ class MavenITmng8340GeneratedPomInTargetTest extends AbstractMavenIntegrationTes
         verifier.execute();
         verifier.verifyErrorFreeLog();
 
-        List<String> l = verifier.loadLogLines();
         verifier.verifyTextNotInLog(
                 "[FATAL] 'parent.relativePath' points at '../../pom.xml' but no POM could be found");
     }

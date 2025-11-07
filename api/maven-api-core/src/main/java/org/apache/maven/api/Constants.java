@@ -30,8 +30,56 @@ public final class Constants {
      *
      * @since 3.0.0
      */
-    @Config(readOnly = true)
+    @Config(readOnly = true, source = Config.Source.SYSTEM_PROPERTIES)
     public static final String MAVEN_HOME = "maven.home";
+
+    /**
+     * Maven version.
+     *
+     * @since 3.0.0
+     */
+    @Config(readOnly = true, source = Config.Source.SYSTEM_PROPERTIES)
+    public static final String MAVEN_VERSION = "maven.version";
+
+    /**
+     * Maven major version: contains the major segment of this Maven version.
+     *
+     * @since 4.0.0
+     */
+    @Config(readOnly = true, source = Config.Source.SYSTEM_PROPERTIES)
+    public static final String MAVEN_VERSION_MAJOR = "maven.version.major";
+
+    /**
+     * Maven minor version: contains the minor segment of this Maven version.
+     *
+     * @since 4.0.0
+     */
+    @Config(readOnly = true, source = Config.Source.SYSTEM_PROPERTIES)
+    public static final String MAVEN_VERSION_MINOR = "maven.version.minor";
+
+    /**
+     * Maven patch version: contains the patch segment of this Maven version.
+     *
+     * @since 4.0.0
+     */
+    @Config(readOnly = true, source = Config.Source.SYSTEM_PROPERTIES)
+    public static final String MAVEN_VERSION_PATCH = "maven.version.patch";
+
+    /**
+     * Maven snapshot: contains "true" if this Maven is a snapshot version.
+     *
+     * @since 4.0.0
+     */
+    @Config(readOnly = true, source = Config.Source.SYSTEM_PROPERTIES)
+    public static final String MAVEN_VERSION_SNAPSHOT = "maven.version.snapshot";
+
+    /**
+     * Maven build version: a human-readable string containing this Maven version, buildnumber, and time of its build.
+     *
+     * @since 3.0.0
+     */
+    @Config(readOnly = true, source = Config.Source.SYSTEM_PROPERTIES)
+    public static final String MAVEN_BUILD_VERSION = "maven.build.version";
 
     /**
      * Maven installation configuration directory.
@@ -304,6 +352,7 @@ public final class Constants {
      *     <li>"h" or "h(num)" - highest version or top list of highest ones filter</li>
      *     <li>"l" or "l(num)" - lowest version or bottom list of lowest ones filter</li>
      *     <li>"s" - contextual snapshot filter</li>
+     *     <li>"ns" - unconditional snapshot filter (no snapshots selected from ranges)</li>
      *     <li>"e(G:A:V)" - predicate filter (leaves out G:A:V from range, if hit, V can be range)</li>
      * </ul>
      * Example filter expression: <code>"h(5);s;e(org.foo:bar:1)</code> will cause: ranges are filtered for "top 5" (instead
@@ -361,9 +410,9 @@ public final class Constants {
 
     /**
      * User property for selecting dependency manager behaviour regarding transitive dependencies and dependency
-     * management entries in their POMs. Maven 3 targeted full backward compatibility with Maven2, hence it ignored
-     * dependency management entries in transitive dependency POMs. Maven 4 enables "transitivity" by default, hence
-     * unlike Maven2, obeys dependency management entries deep in dependency graph as well.
+     * management entries in their POMs. Maven 3 targeted full backward compatibility with Maven 2. Hence, it ignored
+     * dependency management entries in transitive dependency POMs. Maven 4 enables "transitivity" by default. Hence
+     * unlike Maven 3, it obeys dependency management entries deep in the dependency graph as well.
      * <br/>
      * Default: <code>"true"</code>.
      *
@@ -415,6 +464,27 @@ public final class Constants {
     public static final String MAVEN_CONSUMER_POM = "maven.consumer.pom";
 
     /**
+     * User property for controlling consumer POM flattening behavior.
+     * When set to <code>true</code> (default), consumer POMs are flattened by removing
+     * dependency management and keeping only direct dependencies with transitive scopes.
+     * When set to <code>false</code>, consumer POMs preserve dependency management
+     * like parent POMs, allowing dependency management to be inherited by consumers.
+     *
+     * @since 4.1.0
+     */
+    @Config(type = "java.lang.Boolean", defaultValue = "false")
+    public static final String MAVEN_CONSUMER_POM_FLATTEN = "maven.consumer.pom.flatten";
+
+    /**
+     * User property for controlling "maven personality". If activated Maven will behave
+     * like the previous major version, Maven 3.
+     *
+     * @since 4.0.0
+     */
+    @Config(type = "java.lang.Boolean", defaultValue = "false")
+    public static final String MAVEN_MAVEN3_PERSONALITY = "maven.maven3Personality";
+
+    /**
      * User property for disabling version resolver cache.
      *
      * @since 3.0.0
@@ -438,6 +508,19 @@ public final class Constants {
     public static final String MAVEN_DEPLOY_SNAPSHOT_BUILD_NUMBER = "maven.deploy.snapshot.buildNumber";
 
     /**
+     * User property for controlling whether build POMs are deployed alongside consumer POMs.
+     * When set to <code>false</code>, only the consumer POM will be deployed, and the build POM
+     * will be excluded from deployment. This is useful to avoid deploying internal build information
+     * that is not needed by consumers of the artifact.
+     * <br/>
+     * Default: <code>"true"</code>.
+     *
+     * @since 4.1.0
+     */
+    @Config(type = "java.lang.Boolean", defaultValue = "true")
+    public static final String MAVEN_DEPLOY_BUILD_POM = "maven.deploy.buildPom";
+
+    /**
      * User property used to store the build timestamp.
      *
      * @since 4.0.0
@@ -452,6 +535,209 @@ public final class Constants {
      */
     @Config(type = "java.lang.Integer", defaultValue = "100")
     public static final String MAVEN_BUILDER_MAX_PROBLEMS = "maven.builder.maxProblems";
+
+    /**
+     * Configuration property for version range resolution used metadata "nature".
+     * It may contain following string values:
+     * <ul>
+     *     <li>"auto" - decision done based on range being resolver: if any boundary is snapshot, use "release_or_snapshot", otherwise "release"</li>
+     *     <li>"release_or_snapshot" - the default</li>
+     *     <li>"release" - query only release repositories to discover versions</li>
+     *     <li>"snapshot" - query only snapshot repositories to discover versions</li>
+     * </ul>
+     * Default (when unset) is existing Maven behaviour: "release_or_snapshots".
+     * @since 4.0.0
+     */
+    @Config(defaultValue = "release_or_snapshot")
+    public static final String MAVEN_VERSION_RANGE_RESOLVER_NATURE_OVERRIDE =
+            "maven.versionRangeResolver.natureOverride";
+
+    /**
+     * Comma-separated list of XML contexts/fields to intern during POM parsing for memory optimization.
+     * When not specified, a default set of commonly repeated contexts will be used.
+     * Example: "groupId,artifactId,version,scope,type"
+     *
+     * @since 4.0.0
+     */
+    @Config
+    public static final String MAVEN_MODEL_BUILDER_INTERNS = "maven.modelBuilder.interns";
+
+    /**
+     * All system properties used by Maven Logger start with this prefix.
+     *
+     * @since 4.0.0
+     */
+    public static final String MAVEN_LOGGER_PREFIX = "maven.logger.";
+
+    /**
+     * Default log level for all instances of SimpleLogger. Must be one of ("trace", "debug", "info",
+     * "warn", "error" or "off"). If not specified, defaults to "info".
+     *
+     * @since 4.0.0
+     */
+    @Config
+    public static final String MAVEN_LOGGER_DEFAULT_LOG_LEVEL = MAVEN_LOGGER_PREFIX + "defaultLogLevel";
+
+    /**
+     * Set to true if you want the current date and time to be included in output messages. Default is false.
+     *
+     * @since 4.0.0
+     */
+    @Config(type = "java.lang.Boolean", defaultValue = "false")
+    public static final String MAVEN_LOGGER_SHOW_DATE_TIME = MAVEN_LOGGER_PREFIX + "showDateTime";
+
+    /**
+     * The date and time format to be used in the output messages. The pattern describing the date and
+     * time format is defined by SimpleDateFormat. If the format is not specified or is invalid, the
+     * number of milliseconds since start up will be output.
+     *
+     * @since 4.0.0
+     */
+    @Config
+    public static final String MAVEN_LOGGER_DATE_TIME_FORMAT = MAVEN_LOGGER_PREFIX + "dateTimeFormat";
+
+    /**
+     * If you would like to output the current thread id, then set to true. Defaults to false.
+     *
+     * @since 4.0.0
+     */
+    @Config(type = "java.lang.Boolean", defaultValue = "false")
+    public static final String MAVEN_LOGGER_SHOW_THREAD_ID = MAVEN_LOGGER_PREFIX + "showThreadId";
+
+    /**
+     * Set to true if you want to output the current thread name. Defaults to true.
+     *
+     * @since 4.0.0
+     */
+    @Config(type = "java.lang.Boolean", defaultValue = "true")
+    public static final String MAVEN_LOGGER_SHOW_THREAD_NAME = MAVEN_LOGGER_PREFIX + "showThreadName";
+
+    /**
+     * Set to true if you want the Logger instance name to be included in output messages. Defaults to true.
+     *
+     * @since 4.0.0
+     */
+    @Config(type = "java.lang.Boolean", defaultValue = "true")
+    public static final String MAVEN_LOGGER_SHOW_LOG_NAME = MAVEN_LOGGER_PREFIX + "showLogName";
+
+    /**
+     * Set to true if you want the last component of the name to be included in output messages. Defaults to false.
+     *
+     * @since 4.0.0
+     */
+    @Config(type = "java.lang.Boolean", defaultValue = "false")
+    public static final String MAVEN_LOGGER_SHOW_SHORT_LOG_NAME = MAVEN_LOGGER_PREFIX + "showShortLogName";
+
+    /**
+     * The output target which can be the path to a file, or the special values "System.out" and "System.err".
+     * Default is "System.err".
+     *
+     * @since 4.0.0
+     */
+    @Config
+    public static final String MAVEN_LOGGER_LOG_FILE = MAVEN_LOGGER_PREFIX + "logFile";
+
+    /**
+     * Should the level string be output in brackets? Defaults to false.
+     *
+     * @since 4.0.0
+     */
+    @Config(type = "java.lang.Boolean", defaultValue = "false")
+    public static final String MAVEN_LOGGER_LEVEL_IN_BRACKETS = MAVEN_LOGGER_PREFIX + "levelInBrackets";
+
+    /**
+     * The string value output for the warn level. Defaults to WARN.
+     *
+     * @since 4.0.0
+     */
+    @Config(defaultValue = "WARN")
+    public static final String MAVEN_LOGGER_WARN_LEVEL = MAVEN_LOGGER_PREFIX + "warnLevelString";
+
+    /**
+     * If the output target is set to "System.out" or "System.err" (see preceding entry), by default, logs will
+     * be output to the latest value referenced by System.out/err variables. By setting this parameter to true,
+     * the output stream will be cached, i.e. assigned once at initialization time and re-used independently of
+     * the current value referenced by System.out/err.
+     *
+     * @since 4.0.0
+     */
+    @Config(type = "java.lang.Boolean", defaultValue = "false")
+    public static final String MAVEN_LOGGER_CACHE_OUTPUT_STREAM = MAVEN_LOGGER_PREFIX + "cacheOutputStream";
+
+    /**
+     * maven.logger.log.a.b.c - Logging detail level for a SimpleLogger instance named "a.b.c". Right-side value
+     * must be one of "trace", "debug", "info", "warn", "error" or "off". When a logger named "a.b.c" is initialized,
+     * its level is assigned from this property. If unspecified, the level of nearest parent logger will be used,
+     * and if none is set, then the value specified by {@code maven.logger.defaultLogLevel} will be used.
+     *
+     * @since 4.0.0
+     */
+    public static final String MAVEN_LOGGER_LOG_PREFIX = MAVEN_LOGGER_PREFIX + "log.";
+
+    /**
+     * User property key for cache configuration.
+     *
+     * @since 4.1.0
+     */
+    public static final String MAVEN_CACHE_CONFIG_PROPERTY = "maven.cache.config";
+
+    /**
+     * User property to enable cache statistics display at the end of the build.
+     * When set to true, detailed cache statistics including hit/miss ratios,
+     * request type breakdowns, and retention policy effectiveness will be displayed
+     * when the build completes.
+     *
+     * @since 4.1.0
+     */
+    @Config(type = "java.lang.Boolean", defaultValue = "false")
+    public static final String MAVEN_CACHE_STATS = "maven.cache.stats";
+
+    /**
+     * User property to configure separate reference types for cache keys.
+     * This enables fine-grained analysis of cache misses caused by key vs value evictions.
+     * Supported values are {@code HARD}, {@code SOFT} and {@code WEAK}.
+     *
+     * @since 4.1.0
+     */
+    public static final String MAVEN_CACHE_KEY_REFS = "maven.cache.keyValueRefs";
+
+    /**
+     * User property to configure separate reference types for cache values.
+     * This enables fine-grained analysis of cache misses caused by key vs value evictions.
+     * Supported values are {@code HARD}, {@code SOFT} and {@code WEAK}.
+     *
+     * @since 4.1.0
+     */
+    public static final String MAVEN_CACHE_VALUE_REFS = "maven.cache.keyValueRefs";
+
+    /**
+     * User property key for configuring which object types are pooled by ModelObjectProcessor.
+     * Value should be a comma-separated list of simple class names (e.g., "Dependency,Plugin,Build").
+     * Default is "Dependency" for backward compatibility.
+     *
+     * @since 4.1.0
+     */
+    @Config(defaultValue = "Dependency")
+    public static final String MAVEN_MODEL_PROCESSOR_POOLED_TYPES = "maven.model.processor.pooledTypes";
+
+    /**
+     * User property key for configuring the default reference type used by ModelObjectProcessor.
+     * Valid values are: "SOFT", "HARD", "WEAK", "NONE".
+     * Default is "HARD" for optimal performance.
+     *
+     * @since 4.1.0
+     */
+    @Config(defaultValue = "HARD")
+    public static final String MAVEN_MODEL_PROCESSOR_REFERENCE_TYPE = "maven.model.processor.referenceType";
+
+    /**
+     * User property key prefix for configuring per-object-type reference types.
+     * Format: maven.model.processor.referenceType.{ClassName} = {ReferenceType}
+     * Example: maven.model.processor.referenceType.Dependency = SOFT
+     *
+     * @since 4.1.0
+     */
+    public static final String MAVEN_MODEL_PROCESSOR_REFERENCE_TYPE_PREFIX = "maven.model.processor.referenceType.";
 
     private Constants() {}
 }

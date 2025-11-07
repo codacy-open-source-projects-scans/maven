@@ -17,7 +17,7 @@ KIND, either express or implied.  See the License for the
 specific language governing permissions and limitations
 under the License.
 -->
-<project>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>org.apache.maven.its.mng5639</groupId>
@@ -28,11 +28,6 @@ under the License.
   <name>Maven Integration Test :: MNG-5639</name>
   <description>Checks that an import POM in the dependencyManagement section can be successfully
         resolved from a repository defining a URL that contains a property.</description>
-
-  <properties>
-    <!-- Value corresponds to the folder name in this directory -->
-    <repository.url.suffix.property>repo-set-by-property</repository.url.suffix.property>
-  </properties>
 
   <dependencyManagement>
     <dependencies>

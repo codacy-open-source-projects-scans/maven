@@ -22,10 +22,8 @@ under the License.
 
   <parent>
     <groupId>org.apache.maven</groupId>
-    <artifactId>maven</artifactId>
-    <version>4.0.0-rc-3-SNAPSHOT</version>
-
-    <relativePath>../../</relativePath>
+    <artifactId>maven-impl-modules</artifactId>
+    <version>4.1.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>maven-executor</artifactId>
@@ -34,8 +32,9 @@ under the License.
   <description>Maven 4 Executor, for executing Maven 3/4.</description>
 
   <properties>
-    <maven3version>3.9.9</maven3version>
+    <maven3version>3.9.11</maven3version>
     <maven4version>${project.version}</maven4version>
+    <testTmpDir>${project.build.directory}/tmp</testTmpDir>
   </properties>
 
   <dependencies>
@@ -56,12 +55,23 @@ under the License.
       <scope>test</scope>
     </dependency>
     <dependency>
+      <groupId>eu.maveniverse.maven.mimir</groupId>
+      <artifactId>testing</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
       <groupId>org.apache.maven</groupId>
       <artifactId>apache-maven</artifactId>
       <version>${project.version}</version>
       <classifier>bin</classifier>
       <type>zip</type>
       <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>*</groupId>
+          <artifactId>*</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
   </dependencies>
 
@@ -103,6 +113,24 @@ under the License.
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>create-tmp-dir</id>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <phase>process-test-resources</phase>
+            <configuration>
+              <target>
+                <mkdir dir="${testTmpDir}" />
+              </target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
         <configuration>
           <promoteUserPropertiesToSystemProperties>false</promoteUserPropertiesToSystemProperties>
@@ -111,7 +139,9 @@ under the License.
             <maven4version>${maven4version}</maven4version>
             <maven3home>${project.build.directory}/dependency/apache-maven-${maven3version}</maven3home>
             <maven4home>${project.build.directory}/dependency/apache-maven-${maven4version}</maven4home>
+            <localRepository>${settings.localRepository}</localRepository>
           </systemPropertyVariables>
+          <argLine>-Xmx256m @{jacocoArgLine} -Djava.io.tmpdir=${testTmpDir}</argLine>
         </configuration>
       </plugin>
     </plugins>

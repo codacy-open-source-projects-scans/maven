@@ -40,13 +40,19 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.apache.maven.ProjectCycleException;
 import org.apache.maven.RepositoryUtils;
+import org.apache.maven.api.ArtifactCoordinates;
+import org.apache.maven.api.Language;
+import org.apache.maven.api.LocalRepository;
+import org.apache.maven.api.ProjectScope;
 import org.apache.maven.api.SessionData;
+import org.apache.maven.api.annotations.Nonnull;
+import org.apache.maven.api.annotations.Nullable;
 import org.apache.maven.api.model.Build;
 import org.apache.maven.api.model.Dependency;
 import org.apache.maven.api.model.DependencyManagement;
@@ -56,6 +62,11 @@ import org.apache.maven.api.model.Model;
 import org.apache.maven.api.model.Plugin;
 import org.apache.maven.api.model.Profile;
 import org.apache.maven.api.model.ReportPlugin;
+import org.apache.maven.api.model.Resource;
+import org.apache.maven.api.services.ArtifactResolver;
+import org.apache.maven.api.services.ArtifactResolverException;
+import org.apache.maven.api.services.ArtifactResolverRequest;
+import org.apache.maven.api.services.ArtifactResolverResult;
 import org.apache.maven.api.services.BuilderProblem.Severity;
 import org.apache.maven.api.services.ModelBuilder;
 import org.apache.maven.api.services.ModelBuilderException;
@@ -66,19 +77,22 @@ import org.apache.maven.api.services.ModelProblem.Version;
 import org.apache.maven.api.services.ModelProblemCollector;
 import org.apache.maven.api.services.ModelSource;
 import org.apache.maven.api.services.ModelTransformer;
+import org.apache.maven.api.services.ProblemCollector;
 import org.apache.maven.api.services.Source;
+import org.apache.maven.api.services.Sources;
 import org.apache.maven.api.services.model.LifecycleBindingsInjector;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.InvalidRepositoryException;
 import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.bridge.MavenRepositorySystem;
-import org.apache.maven.internal.impl.InternalSession;
-import org.apache.maven.internal.impl.resolver.ArtifactDescriptorUtils;
+import org.apache.maven.impl.DefaultSourceRoot;
+import org.apache.maven.impl.InternalSession;
+import org.apache.maven.impl.resolver.ArtifactDescriptorUtils;
+import org.apache.maven.internal.impl.InternalMavenSession;
 import org.apache.maven.model.building.DefaultModelProblem;
 import org.apache.maven.model.building.FileModelSource;
 import org.apache.maven.model.building.ModelBuildingRequest;
 import org.apache.maven.model.building.ModelSource2;
-import org.apache.maven.model.building.ModelSource3;
 import org.apache.maven.model.root.RootLocator;
 import org.apache.maven.plugin.PluginManagerException;
 import org.apache.maven.plugin.PluginResolutionException;
@@ -86,15 +100,15 @@ import org.apache.maven.plugin.version.PluginVersionResolutionException;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.repository.LocalRepositoryManager;
-import org.eclipse.aether.repository.WorkspaceRepository;
-import org.eclipse.aether.resolution.ArtifactRequest;
-import org.eclipse.aether.resolution.ArtifactResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * DefaultProjectBuilder
+ *
+ * @deprecated use {@code org.apache.maven.api.services.ProjectBuilder} instead
  */
+@Deprecated(since = "4.0.0")
 @Named
 @Singleton
 public class DefaultProjectBuilder implements ProjectBuilder {
@@ -103,7 +117,6 @@ public class DefaultProjectBuilder implements ProjectBuilder {
     private final ModelBuilder modelBuilder;
     private final ProjectBuildingHelper projectBuildingHelper;
     private final MavenRepositorySystem repositorySystem;
-    private final org.eclipse.aether.RepositorySystem repoSystem;
     private final ProjectDependenciesResolver dependencyResolver;
     private final RootLocator rootLocator;
     private final LifecycleBindingsInjector lifecycleBindingsInjector;
@@ -121,7 +134,6 @@ public class DefaultProjectBuilder implements ProjectBuilder {
         this.modelBuilder = modelBuilder;
         this.projectBuildingHelper = projectBuildingHelper;
         this.repositorySystem = repositorySystem;
-        this.repoSystem = repoSystem;
         this.dependencyResolver = dependencyResolver;
         this.rootLocator = rootLocator;
         this.lifecycleBindingsInjector = lifecycleBindingsInjector;
@@ -134,7 +146,7 @@ public class DefaultProjectBuilder implements ProjectBuilder {
     public ProjectBuildingResult build(File pomFile, ProjectBuildingRequest request) throws ProjectBuildingException {
         try (BuildSession bs = new BuildSession(request)) {
             Path path = pomFile.toPath();
-            return bs.build(path, ModelSource.fromPath(path));
+            return bs.build(false, path, Sources.buildSource(path));
         }
     }
 
@@ -149,7 +161,7 @@ public class DefaultProjectBuilder implements ProjectBuilder {
     @Deprecated
     static ModelSource toSource(org.apache.maven.model.building.ModelSource modelSource) {
         if (modelSource instanceof FileModelSource fms) {
-            return ModelSource.fromPath(fms.getPath());
+            return Sources.buildSource(fms.getPath());
         } else {
             return new WrapModelSource(modelSource);
         }
@@ -159,7 +171,7 @@ public class DefaultProjectBuilder implements ProjectBuilder {
     public ProjectBuildingResult build(ModelSource modelSource, ProjectBuildingRequest request)
             throws ProjectBuildingException {
         try (BuildSession bs = new BuildSession(request)) {
-            return bs.build(null, modelSource);
+            return bs.build(false, null, modelSource);
         }
     }
 
@@ -173,7 +185,7 @@ public class DefaultProjectBuilder implements ProjectBuilder {
     public ProjectBuildingResult build(Artifact artifact, boolean allowStubModel, ProjectBuildingRequest request)
             throws ProjectBuildingException {
         try (BuildSession bs = new BuildSession(request)) {
-            return bs.build(artifact, allowStubModel);
+            return bs.build(false, artifact, allowStubModel, request.getRemoteRepositories());
         }
     }
 
@@ -195,27 +207,32 @@ public class DefaultProjectBuilder implements ProjectBuilder {
         }
 
         @Override
-        public ModelSource resolve(ModelLocator modelLocator, String relative) {
+        @Nullable
+        public ModelSource resolve(@Nonnull ModelLocator modelLocator, @Nonnull String relative) {
             return null;
         }
 
         @Override
+        @Nullable
         public Path getPath() {
             return null;
         }
 
         @Override
+        @Nonnull
         public InputStream openStream() throws IOException {
             return new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8));
         }
 
         @Override
+        @Nonnull
         public String getLocation() {
             return artifact.getId();
         }
 
         @Override
-        public Source resolve(String relative) {
+        @Nullable
+        public Source resolve(@Nonnull String relative) {
             return null;
         }
 
@@ -245,47 +262,32 @@ public class DefaultProjectBuilder implements ProjectBuilder {
         }
 
         @Override
-        public ModelSource resolve(ModelLocator modelLocator, String relative) {
-            if (modelSource instanceof ModelSource3 ms) {
-                return toSource(ms.getRelatedSource(
-                        new org.apache.maven.model.locator.ModelLocator() {
-                            @Override
-                            public File locatePom(File projectDirectory) {
-                                return null;
-                            }
-
-                            @Override
-                            public Path locatePom(Path projectDirectory) {
-                                return null;
-                            }
-
-                            @Override
-                            public Path locateExistingPom(Path project) {
-                                return modelLocator.locateExistingPom(project);
-                            }
-                        },
-                        relative));
-            }
+        @Nullable
+        public ModelSource resolve(@Nonnull ModelLocator modelLocator, @Nonnull String relative) {
             return null;
         }
 
         @Override
+        @Nullable
         public Path getPath() {
             return null;
         }
 
         @Override
+        @Nonnull
         public InputStream openStream() throws IOException {
             return modelSource.getInputStream();
         }
 
         @Override
+        @Nonnull
         public String getLocation() {
             return modelSource.getLocation();
         }
 
         @Override
-        public Source resolve(String relative) {
+        @Nullable
+        public Source resolve(@Nonnull String relative) {
             if (modelSource instanceof ModelSource2 ms) {
                 return toSource(ms.getRelatedSource(relative));
             } else {
@@ -313,46 +315,81 @@ public class DefaultProjectBuilder implements ProjectBuilder {
 
     class BuildSession implements AutoCloseable {
         private final ProjectBuildingRequest request;
-        private final RepositorySystemSession session;
+        private final InternalSession session;
         private final ModelBuilder.ModelBuilderSession modelBuilderSession;
         private final Map<String, MavenProject> projectIndex = new ConcurrentHashMap<>(256);
 
+        // Store computed repositories per project to avoid leakage between projects
+        private final Map<String, List<ArtifactRepository>> projectRepositories = new ConcurrentHashMap<>();
+
+        /**
+         * Get the effective repositories for a project. If project-specific repositories
+         * have been computed and stored, use those; otherwise fall back to request repositories.
+         */
+        private List<ArtifactRepository> getEffectiveRepositories(String projectId) {
+            List<ArtifactRepository> stored = projectRepositories.get(projectId);
+            return stored != null ? stored : request.getRemoteRepositories();
+        }
+
         BuildSession(ProjectBuildingRequest request) {
             this.request = request;
-            this.session =
-                    RepositoryUtils.overlay(request.getLocalRepository(), request.getRepositorySession(), repoSystem);
-            InternalSession iSession = InternalSession.from(session);
+            InternalSession session = InternalSession.from(request.getRepositorySession());
+            Path basedir = request.getLocalRepository() != null
+                    ? request.getLocalRepository().getBasedirPath()
+                    : null;
+            if (basedir != null) {
+                LocalRepository localRepository = session.createLocalRepository(basedir);
+                session = InternalSession.from(session.withLocalRepository(localRepository));
+            }
+            this.session = session;
             this.modelBuilderSession = modelBuilder.newSession();
             // Save the ModelBuilderSession for later retrieval by the DefaultConsumerPomBuilder.
             // Use replace(key, null, value) to make sure the *main* session, i.e. the one used
             // to load the projects, is stored. This is to avoid the session being overwritten
             // if a plugin uses the ProjectBuilder.
-            iSession.getData()
+            this.session
+                    .getData()
                     .replace(SessionData.key(ModelBuilder.ModelBuilderSession.class), null, modelBuilderSession);
         }
 
         @Override
         public void close() {}
 
-        ProjectBuildingResult build(Path pomFile, ModelSource modelSource) throws ProjectBuildingException {
+        ProjectBuildingResult build(boolean parent, Path pomFile, ModelSource modelSource)
+                throws ProjectBuildingException {
             ClassLoader oldContextClassLoader = Thread.currentThread().getContextClassLoader();
 
             try {
                 MavenProject project = request.getProject();
 
-                List<ModelProblem> modelProblems = null;
+                ProblemCollector<ModelProblem> problemCollector = null;
                 Throwable error = null;
 
                 if (project == null) {
                     project = new MavenProject();
                     project.setFile(pomFile != null ? pomFile.toFile() : null);
 
+                    boolean reactorMember = pomFile != null
+                            && session.getProjects() != null // this is for UTs
+                            && session.getProjects().stream()
+                                    .anyMatch(
+                                            p -> p.getPomPath().toAbsolutePath().equals(pomFile.toAbsolutePath()));
+                    boolean isStandalone = pomFile == null
+                            && modelSource != null
+                            && modelSource.getLocation().startsWith("jar:")
+                            && modelSource.getLocation().endsWith("/org/apache/maven/project/standalone.xml");
+
                     ModelBuilderRequest.ModelBuilderRequestBuilder builder = getModelBuildingRequest();
-                    ModelBuilderRequest.RequestType type = pomFile != null
-                                    && this.request.isProcessPlugins()
-                                    && this.request.getValidationLevel() == ModelBuildingRequest.VALIDATION_LEVEL_STRICT
+                    ModelBuilderRequest.RequestType type = reactorMember
+                                    || isStandalone
+                                    || (pomFile != null
+                                            && this.request.isProcessPlugins()
+                                            && this.request.getValidationLevel()
+                                                    == ModelBuildingRequest.VALIDATION_LEVEL_STRICT)
                             ? ModelBuilderRequest.RequestType.BUILD_EFFECTIVE
-                            : ModelBuilderRequest.RequestType.CONSUMER_PARENT;
+                            : (parent
+                                    ? ModelBuilderRequest.RequestType.CONSUMER_PARENT
+                                    : ModelBuilderRequest.RequestType.CONSUMER_DEPENDENCY);
                     MavenProject theProject = project;
                     ModelBuilderRequest request = builder.source(modelSource)
                             .requestType(type)
@@ -378,7 +415,7 @@ public class DefaultProjectBuilder implements ProjectBuilder {
                         error = e;
                     }
 
-                    modelProblems = result.getProblems();
+                    problemCollector = result.getProblemCollector();
 
                     initProject(project, result);
                 }
@@ -391,7 +428,7 @@ public class DefaultProjectBuilder implements ProjectBuilder {
                 }
 
                 ProjectBuildingResult result =
-                        new DefaultProjectBuildingResult(project, convert(modelProblems), resolutionResult);
+                        new DefaultProjectBuildingResult(project, convert(problemCollector), resolutionResult);
 
                 if (error != null) {
                     ProjectBuildingException e = new ProjectBuildingException(List.of(result));
@@ -405,23 +442,34 @@ public class DefaultProjectBuilder implements ProjectBuilder {
             }
         }
 
-        ProjectBuildingResult build(Artifact artifact, boolean allowStubModel) throws ProjectBuildingException {
+        ProjectBuildingResult build(
+                boolean parent, Artifact artifact, boolean allowStubModel, List<ArtifactRepository> repositories)
+                throws ProjectBuildingException {
             org.eclipse.aether.artifact.Artifact pomArtifact = RepositoryUtils.toArtifact(artifact);
             pomArtifact = ArtifactDescriptorUtils.toPomArtifact(pomArtifact);
 
             boolean localProject;
 
             try {
-                ArtifactRequest pomRequest = new ArtifactRequest();
-                pomRequest.setArtifact(pomArtifact);
-                pomRequest.setRepositories(RepositoryUtils.toRepos(request.getRemoteRepositories()));
-                ArtifactResult pomResult = repoSystem.resolveArtifact(session, pomRequest);
+                ArtifactCoordinates coordinates = session.createArtifactCoordinates(session.getArtifact(pomArtifact));
+                // Use provided repositories if available, otherwise fall back to request repositories
+                ArtifactResolverRequest req = ArtifactResolverRequest.builder()
+                        .session(session)
+                        .repositories(repositories.stream()
+                                .map(RepositoryUtils::toRepo)
+                                .map(session::getRemoteRepository)
+                                .toList())
+                        .coordinates(List.of(coordinates))
+                        .build();
+                ArtifactResolverResult res =
+                        session.getService(ArtifactResolver.class).resolve(req);
+                ArtifactResolverResult.ResultItem resItem = res.getResult(coordinates);
 
-                pomArtifact = pomResult.getArtifact();
-                localProject = pomResult.getRepository() instanceof WorkspaceRepository;
-            } catch (org.eclipse.aether.resolution.ArtifactResolutionException e) {
-                if (e.getResults().get(0).isMissing() && allowStubModel) {
-                    return build(null, createStubModelSource(artifact));
+                pomArtifact = InternalMavenSession.from(session).toArtifact(resItem.getArtifact());
+                localProject = resItem.getRepository() instanceof org.apache.maven.api.WorkspaceRepository;
+            } catch (ArtifactResolverException e) {
+                if (e.getResult().getResults().values().iterator().next().isMissing() && allowStubModel) {
+                    return build(parent, null, createStubModelSource(artifact));
                 }
                 throw new ProjectBuildingException(
                         artifact.getId(), "Error resolving project artifact: " + e.getMessage(), e);
@@ -436,11 +484,12 @@ public class DefaultProjectBuilder implements ProjectBuilder {
             }
 
             if (localProject) {
-                return build(pomFile, ModelSource.fromPath(pomFile));
+                return build(parent, pomFile, Sources.buildSource(pomFile));
             } else {
                 return build(
+                        parent,
                         null,
-                        ModelSource.fromPath(
+                        Sources.resolvedSource(
                                 pomFile,
                                 artifact.getGroupId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion()));
             }
@@ -457,10 +506,14 @@ public class DefaultProjectBuilder implements ProjectBuilder {
                         .findAny()
                         .orElse(null);
                 if (cycle != null) {
-                    throw new RuntimeException(new ProjectCycleException(
+                    final CycleDetectedException cde = (CycleDetectedException) cycle.getException();
+                    throw new ProjectBuildingException(
+                            null,
                             "The projects in the reactor contain a cyclic reference: " + cycle.getMessage(),
-                            (CycleDetectedException) cycle.getException()));
+                            null,
+                            cde);
                 }
+
                 throw new ProjectBuildingException(results);
             }
 
@@ -488,7 +541,7 @@ public class DefaultProjectBuilder implements ProjectBuilder {
                     return injectLifecycleBindings(m, r, p, project, request);
                 };
                 ModelBuilderRequest modelBuildingRequest = getModelBuildingRequest()
-                        .source(ModelSource.fromPath(pomFile.toPath()))
+                        .source(Sources.buildSource(pomFile.toPath()))
                         .requestType(ModelBuilderRequest.RequestType.BUILD_PROJECT)
                         .locationTracking(true)
                         .recursive(recursive)
@@ -498,18 +551,14 @@ public class DefaultProjectBuilder implements ProjectBuilder {
             } catch (ModelBuilderException e) {
                 result = e.getResult();
                 if (result == null || result.getEffectiveModel() == null) {
-                    return List.of(new DefaultProjectBuildingResult(e.getModelId(), pomFile, convert(e.getProblems())));
+                    return List.of(new DefaultProjectBuildingResult(
+                            e.getModelId(), pomFile, convert(e.getProblemCollector())));
                 }
             }
 
             List<ProjectBuildingResult> results = new ArrayList<>();
             List<ModelBuilderResult> allModels = results(result).toList();
             for (ModelBuilderResult r : allModels) {
-                List<ModelProblem> problems = new ArrayList<>(r.getProblems());
-                results(r)
-                        .filter(c -> c != r)
-                        .flatMap(c -> c.getProblems().stream())
-                        .forEach(problems::remove);
                 if (r.getEffectiveModel() != null) {
                     File pom = r.getSource().getPath().toFile();
                     MavenProject project =
@@ -529,9 +578,16 @@ public class DefaultProjectBuilder implements ProjectBuilder {
                     if (request.isResolveDependencies()) {
                         resolutionResult = resolveDependencies(project);
                     }
-                    results.add(new DefaultProjectBuildingResult(project, convert(problems), resolutionResult));
+                    results.add(new DefaultProjectBuildingResult(
+                            project, convert(r.getProblemCollector()), resolutionResult));
                 } else {
-                    results.add(new DefaultProjectBuildingResult(null, convert(problems), null));
+                    // Extract project identification even when effective model is null
+                    String projectId = extractProjectId(r);
+                    File sourcePomFile = r.getSource() != null && r.getSource().getPath() != null
+                            ? r.getSource().getPath().toFile()
+                            : null;
+                    results.add(new DefaultProjectBuildingResult(
+                            projectId, sourcePomFile, convert(r.getProblemCollector())));
                 }
             }
             return results;
@@ -541,11 +597,34 @@ public class DefaultProjectBuilder implements ProjectBuilder {
             return Stream.concat(result.getChildren().stream().flatMap(this::results), Stream.of(result));
         }
 
-        private List<org.apache.maven.model.building.ModelProblem> convert(List<ModelProblem> problems) {
-            if (problems == null) {
+        private List<org.apache.maven.model.building.ModelProblem> convert(
+                ProblemCollector<ModelProblem> problemCollector) {
+            if (problemCollector == null) {
                 return null;
             }
-            return problems.stream().map(p -> convert(p)).toList();
+            ArrayList<org.apache.maven.model.building.ModelProblem> problems = new ArrayList<>();
+            problemCollector.problems().map(BuildSession::convert).forEach(problems::add);
+            if (problemCollector.problemsOverflow()) {
+                problems.add(
+                        0,
+                        new DefaultModelProblem(
+                                "Too many model problems reported (listed problems are just a subset of reported problems)",
+                                org.apache.maven.model.building.ModelProblem.Severity.WARNING,
+                                null,
+                                null,
+                                -1,
+                                -1,
+                                null,
+                                null));
+                return new ArrayList<>(problems) {
+                    @Override
+                    public int size() {
+                        return problemCollector.totalProblemsReported();
+                    }
+                };
+            } else {
+                return problems;
+            }
         }
 
         private static org.apache.maven.model.building.ModelProblem convert(ModelProblem p) {
@@ -576,9 +655,57 @@ public class DefaultProjectBuilder implements ProjectBuilder {
             // only set those on 2nd phase, ignore on 1st pass
             if (project.getFile() != null) {
                 Build build = project.getBuild().getDelegate();
-                project.addScriptSourceRoot(build.getScriptSourceDirectory());
-                project.addCompileSourceRoot(build.getSourceDirectory());
-                project.addTestCompileSourceRoot(build.getTestSourceDirectory());
+                List<org.apache.maven.api.model.Source> sources = build.getSources();
+                Path baseDir = project.getBaseDirectory();
+                Function<ProjectScope, String> outputDirectory = (scope) -> {
+                    if (scope == ProjectScope.MAIN) {
+                        return build.getOutputDirectory();
+                    } else if (scope == ProjectScope.TEST) {
+                        return build.getTestOutputDirectory();
+                    } else {
+                        return build.getDirectory();
+                    }
+                };
+                boolean hasScript = false;
+                boolean hasMain = false;
+                boolean hasTest = false;
+                for (var source : sources) {
+                    var src = DefaultSourceRoot.fromModel(session, baseDir, outputDirectory, source);
+                    project.addSourceRoot(src);
+                    Language language = src.language();
+                    if (Language.JAVA_FAMILY.equals(language)) {
+                        ProjectScope scope = src.scope();
+                        if (ProjectScope.MAIN.equals(scope)) {
+                            hasMain = true;
+                        } else {
+                            hasTest |= ProjectScope.TEST.equals(scope);
+                        }
+                    } else {
+                        hasScript |= Language.SCRIPT.equals(language);
+                    }
+                }
+                /*
+                 * `sourceDirectory`, `testSourceDirectory` and `scriptSourceDirectory`
+                 * are ignored if the POM file contains at least one <source> element
+                 * for the corresponding scope and language. This rule exists because
+                 * Maven provides default values for those elements which may conflict
+                 * with user's configuration.
+                 */
+                if (!hasScript) {
+                    project.addScriptSourceRoot(build.getScriptSourceDirectory());
+                }
+                if (!hasMain) {
+                    project.addCompileSourceRoot(build.getSourceDirectory());
+                }
+                if (!hasTest) {
+                    project.addTestCompileSourceRoot(build.getTestSourceDirectory());
+                }
+                for (Resource resource : project.getBuild().getDelegate().getResources()) {
+                    project.addSourceRoot(new DefaultSourceRoot(baseDir, ProjectScope.MAIN, resource));
+                }
+                for (Resource resource : project.getBuild().getDelegate().getTestResources()) {
+                    project.addSourceRoot(new DefaultSourceRoot(baseDir, ProjectScope.TEST, resource));
+                }
             }
 
             project.setActiveProfiles(
@@ -716,6 +843,24 @@ public class DefaultProjectBuilder implements ProjectBuilder {
                             "Failed to create snapshot distribution repository for " + project.getId(), e);
                 }
             }
+
+            // remote repositories
+            List<ArtifactRepository> remoteRepositories = request.getRemoteRepositories();
+            try {
+                remoteRepositories = projectBuildingHelper.createArtifactRepositories(
+                        project.getModel().getRepositories(), remoteRepositories, request);
+            } catch (Exception e) {
+                result.getProblemCollector()
+                        .reportProblem(new org.apache.maven.impl.model.DefaultModelProblem(
+                                "",
+                                Severity.ERROR,
+                                Version.BASE,
+                                project.getModel().getDelegate(),
+                                -1,
+                                -1,
+                                e));
+            }
+            project.setRemoteArtifactRepositories(remoteRepositories);
         }
 
         private void initParent(MavenProject project, ModelBuilderResult result) {
@@ -731,16 +876,40 @@ public class DefaultProjectBuilder implements ProjectBuilder {
                 MavenProject parent = projectIndex.get(parentModel.getId());
                 if (parent == null) {
                     //
-                    // At this point the DefaultModelBuildingListener has fired and it populates the
+                    // At this point the DefaultModelBuildingListener has fired, and it populates the
                     // remote repositories with those found in the pom.xml, along with the existing externally
                     // defined repositories.
                     //
-                    request.setRemoteRepositories(project.getRemoteArtifactRepositories());
+                    // Compute merged repositories for this project and store in session
+                    // instead of mutating the shared request to avoid leakage between projects
+                    List<ArtifactRepository> mergedRepositories;
+                    switch (request.getRepositoryMerging()) {
+                        case POM_DOMINANT -> {
+                            LinkedHashSet<ArtifactRepository> reposes =
+                                    new LinkedHashSet<>(project.getRemoteArtifactRepositories());
+                            reposes.addAll(request.getRemoteRepositories());
+                            mergedRepositories = List.copyOf(reposes);
+                        }
+                        case REQUEST_DOMINANT -> {
+                            LinkedHashSet<ArtifactRepository> reposes =
+                                    new LinkedHashSet<>(request.getRemoteRepositories());
+                            reposes.addAll(project.getRemoteArtifactRepositories());
+                            mergedRepositories = List.copyOf(reposes);
+                        }
+                        default ->
+                            throw new IllegalArgumentException(
+                                    "Unsupported repository merging: " + request.getRepositoryMerging());
+                    }
+
+                    // Store the computed repositories for this project in BuildSession storage
+                    // to avoid mutating the shared request and causing leakage between projects
+                    projectRepositories.put(project.getId(), mergedRepositories);
+
                     Path parentPomFile = parentModel.getPomFile();
                     if (parentPomFile != null) {
                         project.setParentFile(parentPomFile.toFile());
                         try {
-                            parent = build(parentPomFile, ModelSource.fromPath(parentPomFile))
+                            parent = build(true, parentPomFile, Sources.buildSource(parentPomFile))
                                     .getProject();
                         } catch (ProjectBuildingException e) {
                             // MNG-4488 where let invalid parents slide on by
@@ -755,7 +924,8 @@ public class DefaultProjectBuilder implements ProjectBuilder {
                     } else {
                         Artifact parentArtifact = project.getParentArtifact();
                         try {
-                            parent = build(parentArtifact, false).getProject();
+                            parent = build(true, parentArtifact, false, getEffectiveRepositories(project.getId()))
+                                    .getProject();
                         } catch (ProjectBuildingException e) {
                             // MNG-4488 where let invalid parents slide on by
                             if (logger.isDebugEnabled()) {
@@ -778,8 +948,7 @@ public class DefaultProjectBuilder implements ProjectBuilder {
         private ModelBuilderRequest.ModelBuilderRequestBuilder getModelBuildingRequest() {
             ModelBuilderRequest.ModelBuilderRequestBuilder modelBuildingRequest = ModelBuilderRequest.builder();
 
-            InternalSession internalSession = InternalSession.from(session);
-            modelBuildingRequest.session(internalSession);
+            modelBuildingRequest.session(session);
             modelBuildingRequest.requestType(ModelBuilderRequest.RequestType.BUILD_PROJECT);
             modelBuildingRequest.profiles(
                     request.getProfiles() != null
@@ -794,7 +963,7 @@ public class DefaultProjectBuilder implements ProjectBuilder {
             modelBuildingRequest.repositoryMerging(ModelBuilderRequest.RepositoryMerging.valueOf(
                     request.getRepositoryMerging().name()));
             modelBuildingRequest.repositories(request.getRemoteRepositories().stream()
-                    .map(r -> internalSession.getRemoteRepository(RepositoryUtils.toRepo(r)))
+                    .map(r -> session.getRemoteRepository(RepositoryUtils.toRepo(r)))
                     .toList());
             return modelBuildingRequest;
         }
@@ -802,6 +971,7 @@ public class DefaultProjectBuilder implements ProjectBuilder {
         private DependencyResolutionResult resolveDependencies(MavenProject project) {
             DependencyResolutionResult resolutionResult;
 
+            RepositorySystemSession session = this.session.getSession();
             try {
                 DefaultDependencyResolutionRequest resolution =
                         new DefaultDependencyResolutionRequest(project, session);
@@ -822,9 +992,8 @@ public class DefaultProjectBuilder implements ProjectBuilder {
                 LocalRepositoryManager lrm = session.getLocalRepositoryManager();
                 for (Artifact artifact : artifacts) {
                     if (!artifact.isResolved()) {
-                        String path = lrm.getPathForLocalArtifact(RepositoryUtils.toArtifact(artifact));
-                        artifact.setFile(
-                                lrm.getRepository().getBasePath().resolve(path).toFile());
+                        Path path = lrm.getAbsolutePathForLocalArtifact(RepositoryUtils.toArtifact(artifact));
+                        artifact.setFile(path.toFile());
                     }
                 }
             }
@@ -848,6 +1017,27 @@ public class DefaultProjectBuilder implements ProjectBuilder {
                 + artifact.getBaseVersion() + "</version>" + "<packaging>"
                 + artifact.getType() + "</packaging>" + "</project>";
         return new StubModelSource(xml, artifact);
+    }
+
+    /**
+     * Extracts project identification from ModelBuilderResult, falling back to rawModel or fileModel
+     * when effectiveModel is null, similar to ModelBuilderException.getModelId().
+     */
+    private static String extractProjectId(ModelBuilderResult result) {
+        Model model = null;
+        if (result.getEffectiveModel() != null) {
+            model = result.getEffectiveModel();
+        } else if (result.getRawModel() != null) {
+            model = result.getRawModel();
+        } else if (result.getFileModel() != null) {
+            model = result.getFileModel();
+        }
+
+        if (model != null) {
+            return model.getId();
+        }
+
+        return "";
     }
 
     static String getGroupId(Model model) {
@@ -927,7 +1117,7 @@ public class DefaultProjectBuilder implements ProjectBuilder {
             projectBuildingHelper.selectProjectRealm(project);
         }
 
-        // build the regular repos after extensions are loaded to allow for custom layouts
+        // (re)build the regular repos after extensions are loaded to allow for custom layouts
         try {
             remoteRepositories = projectBuildingHelper.createArtifactRepositories(
                     model3.getRepositories(), remoteRepositories, projectBuildingRequest);

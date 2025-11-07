@@ -27,6 +27,7 @@ import org.apache.maven.model.Model;
  * A simple model problem collector for testing the model building components.
  *
  */
+@Deprecated
 public class SimpleProblemCollector implements ModelProblemCollector {
     private Model model;
 
@@ -58,6 +59,7 @@ public class SimpleProblemCollector implements ModelProblemCollector {
         return fatals;
     }
 
+    @Override
     public void add(ModelProblemCollectorRequest req) {
         switch (req.getSeverity()) {
             case FATAL:
@@ -75,6 +77,8 @@ public class SimpleProblemCollector implements ModelProblemCollector {
                     warnings.add(req.getMessage());
                 }
                 break;
+            default:
+                throw new IllegalArgumentException("Unknown severity: " + req.getSeverity());
         }
     }
 }

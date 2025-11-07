@@ -25,7 +25,7 @@ import org.apache.maven.model.Model;
  * or a simple string message. In addition, a problem carries a hint about its source, e.g. the POM file that exhibits
  * the problem.
  *
- * @deprecated use {@link org.apache.maven.api.services.ModelBuilder} instead
+ * @deprecated use {@code org.apache.maven.api.services.ModelBuilder} instead
  */
 @Deprecated(since = "4.0.0")
 public class DefaultModelProblem implements ModelProblem {
@@ -138,16 +138,16 @@ public class DefaultModelProblem implements ModelProblem {
 
     @Override
     public String getMessage() {
-        String msg = null;
+        String msg;
 
         if (message != null && !message.isEmpty()) {
             msg = message;
-        } else if (exception != null) {
+        } else {
             msg = exception.getMessage();
-        }
 
-        if (msg == null) {
-            msg = "";
+            if (msg == null) {
+                msg = "";
+            }
         }
 
         return msg;
@@ -169,11 +169,7 @@ public class DefaultModelProblem implements ModelProblem {
 
         buffer.append('[').append(getSeverity()).append("] ");
         buffer.append(getMessage());
-        String location = ModelProblemUtils.formatLocation(this, null);
-        if (!location.isEmpty()) {
-            buffer.append(" @ ");
-            buffer.append(location);
-        }
+        buffer.append(" @ ").append(ModelProblemUtils.formatLocation(this, null));
 
         return buffer.toString();
     }

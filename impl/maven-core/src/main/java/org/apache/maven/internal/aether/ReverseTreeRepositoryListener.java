@@ -29,8 +29,8 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Objects;
 
-import org.apache.maven.model.InputLocation;
-import org.apache.maven.model.Plugin;
+import org.apache.maven.api.model.InputLocation;
+import org.apache.maven.api.model.Plugin;
 import org.eclipse.aether.AbstractRepositoryListener;
 import org.eclipse.aether.RepositoryEvent;
 import org.eclipse.aether.RepositorySystemSession;
@@ -70,14 +70,16 @@ class ReverseTreeRepositoryListener extends AbstractRepositoryListener {
 
         while (trace != null) {
             Object data = trace.getData();
-            if (data instanceof CollectStepData) {
-                collectStepTrace = (CollectStepData) data;
-            } else if (data instanceof ArtifactDescriptorRequest) {
-                artifactDescriptorRequest = (ArtifactDescriptorRequest) data;
-            } else if (data instanceof ArtifactRequest) {
-                artifactRequest = (ArtifactRequest) data;
-            } else if (data instanceof Plugin) {
-                plugin = (Plugin) data;
+            if (data instanceof CollectStepData collectStepData) {
+                collectStepTrace = collectStepData;
+            } else if (data instanceof ArtifactDescriptorRequest artifactDescriptorRequestData) {
+                artifactDescriptorRequest = artifactDescriptorRequestData;
+            } else if (data instanceof ArtifactRequest artifactRequestData) {
+                artifactRequest = artifactRequestData;
+            } else if (data instanceof Plugin pluginData) {
+                plugin = pluginData;
+            } else if (data instanceof org.apache.maven.model.Plugin pluginData) {
+                plugin = pluginData.getDelegate();
             }
             trace = trace.getParent();
         }
@@ -98,7 +100,7 @@ class ReverseTreeRepositoryListener extends AbstractRepositoryListener {
         String ext = missing ? ".miss" : ".dep";
         Path trackingFile = null;
 
-        String indent = "";
+        StringBuilder indent = new StringBuilder();
         ArrayList<String> trackingData = new ArrayList<>();
 
         if (collectStepTrace == null && plugin != null) {
@@ -110,16 +112,16 @@ class ReverseTreeRepositoryListener extends AbstractRepositoryListener {
             }
 
             if (event.getArtifact() != null) {
-                trackingData.add(indent + event.getArtifact());
-                indent += "  ";
+                trackingData.add(indent.toString() + event.getArtifact());
+                indent.append("  ");
             }
             trackingData.add(indent + plugin.getGroupId() + ":" + plugin.getArtifactId() + ":" + plugin.getVersion());
-            indent += "  ";
+            indent.append("  ");
 
             InputLocation location = plugin.getLocation("");
             if (location != null && location.getSource() != null) {
                 trackingData.add(indent + location.getSource().getModelId() + " (implicit)");
-                indent += "  ";
+                indent.append("  ");
             }
         } else if (collectStepTrace != null) {
             if (collectStepTrace.getPath().get(0).getArtifact() == null) {
@@ -138,21 +140,21 @@ class ReverseTreeRepositoryListener extends AbstractRepositoryListener {
             if (isInScope(resolvedArtifact, nodeArtifact) || "pom".equals(resolvedArtifact.getExtension())) {
                 Dependency node = collectStepTrace.getNode();
                 trackingData.add(resolvedArtifact.toString());
-                indent += "  ";
-                trackingData.add(indent + node + " (" + collectStepTrace.getContext() + ")");
+                indent.append("  ");
+                trackingData.add(indent.toString() + node + " (" + collectStepTrace.getContext() + ")");
                 ListIterator<DependencyNode> iter = collectStepTrace
                         .getPath()
                         .listIterator(collectStepTrace.getPath().size());
                 while (iter.hasPrevious()) {
                     DependencyNode curr = iter.previous();
-                    indent += "  ";
-                    trackingData.add(indent + curr + " (" + collectStepTrace.getContext() + ")");
+                    indent.append("  ");
+                    trackingData.add(indent.toString() + curr + " (" + collectStepTrace.getContext() + ")");
                 }
             }
         }
 
         if (trackingFile == null) {
-            return;
+            return; // parent or imported bom ?
         }
         try {
             Files.createDirectories(trackingDir);
@@ -209,8 +211,8 @@ class ReverseTreeRepositoryListener extends AbstractRepositoryListener {
     static CollectStepData lookupCollectStepData(RequestTrace trace) {
         CollectStepData collectStepTrace = null;
         while (trace != null) {
-            if (trace.getData() instanceof CollectStepData) {
-                collectStepTrace = (CollectStepData) trace.getData();
+            if (trace.getData() instanceof CollectStepData collectStepData) {
+                collectStepTrace = collectStepData;
                 break;
             }
             trace = trace.getParent();

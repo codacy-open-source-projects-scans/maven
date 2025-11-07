@@ -276,9 +276,8 @@ public class DefaultMaven implements Maven {
         // because the participant is free to change the dependencies of a project which can potentially change the
         // topological order of the projects, and therefore can potentially change the build order.
         //
-        // Note that participants may affect the topological order of the projects but it is
+        // Note that participants may affect the topological order of the projects, but it is
         // not expected that a participant will add or remove projects from the session.
-        //
 
         graphResult = buildGraph(session);
 
@@ -409,7 +408,22 @@ public class DefaultMaven implements Maven {
      */
     @Deprecated
     public RepositorySystemSession newRepositorySession(MavenExecutionRequest request) {
-        return newCloseableSession(request, new MavenChainedWorkspaceReader());
+        if (!Boolean.parseBoolean(System.getProperty("maven.newRepositorySession.warningsDisabled", "false"))) {
+            if (logger.isDebugEnabled()) {
+                logger.warn(
+                        "Deprecated method `DefaultMaven#newRepositorySession(MavenExecutionRequest)` invoked; please inspect the stack trace and report this issue to the authors of the caller code",
+                        new IllegalStateException(
+                                "Deprecated method `DefaultMaven#newRepositorySession(MavenExecutionRequest)` invoked"));
+            } else {
+                logger.warn(
+                        "Deprecated method `DefaultMaven#newRepositorySession(MavenExecutionRequest)` invoked; report this issue to the authors of the caller code (use -X to see stack trace)");
+            }
+        }
+        RepositorySystemSession result = newCloseableSession(request, new MavenChainedWorkspaceReader());
+        MavenSession session = new MavenSession(result, request, new DefaultMavenExecutionResult());
+        result.getData().set(MavenSession.class, session); // for legacy code to grab this
+        session.setSession(defaultSessionFactory.newSession(session));
+        return result;
     }
 
     private CloseableSession newCloseableSession(MavenExecutionRequest request, WorkspaceReader workspaceReader) {

@@ -19,12 +19,11 @@ under the License.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
+
   <parent>
     <groupId>org.apache.maven</groupId>
-    <artifactId>maven</artifactId>
-    <version>4.0.0-rc-3-SNAPSHOT</version>
-
-    <relativePath>../../</relativePath>
+    <artifactId>maven-impl-modules</artifactId>
+    <version>4.1.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>maven-impl</artifactId>
@@ -78,6 +77,10 @@ under the License.
       <artifactId>maven-di</artifactId>
     </dependency>
     <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-support</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.apache.maven.resolver</groupId>
       <artifactId>maven-resolver-api</artifactId>
     </dependency>
@@ -110,6 +113,14 @@ under the License.
       <artifactId>maven-resolver-impl</artifactId>
     </dependency>
     <dependency>
+      <groupId>org.apache.maven.resolver</groupId>
+      <artifactId>maven-resolver-named-locks</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven.resolver</groupId>
+      <artifactId>maven-resolver-connector-basic</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-sec-dispatcher</artifactId>
     </dependency>
@@ -135,26 +146,6 @@ under the License.
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>org.hamcrest</groupId>
-      <artifactId>hamcrest</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.assertj</groupId>
-      <artifactId>assertj-core</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.maven.resolver</groupId>
-      <artifactId>maven-resolver-named-locks</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.maven.resolver</groupId>
-      <artifactId>maven-resolver-connector-basic</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
       <groupId>org.apache.maven.resolver</groupId>
       <artifactId>maven-resolver-transport-file</artifactId>
       <scope>test</scope>
@@ -169,131 +160,29 @@ under the License.
       <artifactId>jimfs</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.openjdk.jmh</groupId>
+      <artifactId>jmh-core</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.openjdk.jmh</groupId>
+      <artifactId>jmh-generator-annprocess</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
     <plugins>
       <plugin>
-        <groupId>org.codehaus.modello</groupId>
-        <artifactId>modello-maven-plugin</artifactId>
-        <executions>
-          <execution>
-            <id>velocity-settings</id>
-            <goals>
-              <goal>velocity</goal>
-            </goals>
-            <phase>generate-sources</phase>
-            <configuration>
-              <version>2.0.0</version>
-              <basedir>${project.basedir}/../../api/maven-api-settings</basedir>
-              <velocityBasedir>${project.basedir}/../../src/mdo</velocityBasedir>
-              <models>
-                <model>src/main/mdo/settings.mdo</model>
-              </models>
-              <templates>
-                <template>merger.vm</template>
-                <template>transformer.vm</template>
-                <template>reader-stax.vm</template>
-                <template>writer-stax.vm</template>
-              </templates>
-              <params>
-                <param>forcedIOModelVersion=1.2.0</param>
-                <param>packageModelV3=org.apache.maven.settings</param>
-                <param>packageModelV4=org.apache.maven.api.settings</param>
-                <param>packageToolV4=org.apache.maven.settings.v4</param>
-                <param>locationTracking=true</param>
-                <param>generateLocationClasses=true</param>
-              </params>
-            </configuration>
-          </execution>
-          <execution>
-            <id>velocity-toolchains</id>
-            <goals>
-              <goal>velocity</goal>
-            </goals>
-            <phase>generate-sources</phase>
-            <configuration>
-              <version>1.2.0</version>
-              <basedir>${project.basedir}/../../api/maven-api-toolchain</basedir>
-              <velocityBasedir>${project.basedir}/../../src/mdo</velocityBasedir>
-              <models>
-                <model>src/main/mdo/toolchains.mdo</model>
-              </models>
-              <templates>
-                <template>merger.vm</template>
-                <template>transformer.vm</template>
-                <template>reader-stax.vm</template>
-                <template>writer-stax.vm</template>
-              </templates>
-              <params>
-                <param>packageModelV3=org.apache.maven.toolchain.model</param>
-                <param>packageModelV4=org.apache.maven.api.toolchain</param>
-                <param>packageToolV4=org.apache.maven.toolchain.v4</param>
-                <param>locationTracking=true</param>
-                <param>generateLocationClasses=true</param>
-              </params>
-            </configuration>
-          </execution>
-          <execution>
-            <id>velocity-metadata</id>
-            <goals>
-              <goal>velocity</goal>
-            </goals>
-            <phase>generate-sources</phase>
-            <configuration>
-              <version>1.1.0</version>
-              <basedir>${project.basedir}/../../api/maven-api-metadata</basedir>
-              <velocityBasedir>${project.basedir}/../../src/mdo</velocityBasedir>
-              <models>
-                <model>src/main/mdo/metadata.mdo</model>
-              </models>
-              <templates>
-                <template>reader-stax.vm</template>
-                <template>writer-stax.vm</template>
-              </templates>
-              <params>
-                <param>packageModelV4=org.apache.maven.api.metadata</param>
-                <param>packageToolV4=org.apache.maven.metadata.v4</param>
-              </params>
-            </configuration>
-          </execution>
-          <execution>
-            <id>model-v4</id>
-            <goals>
-              <goal>velocity</goal>
-            </goals>
-            <phase>generate-sources</phase>
-            <configuration>
-              <version>4.1.0</version>
-              <basedir>${project.basedir}/../../api/maven-api-model</basedir>
-              <velocityBasedir>${project.basedir}/../../src/mdo</velocityBasedir>
-              <models>
-                <model>src/main/mdo/maven.mdo</model>
-              </models>
-              <templates>
-                <template>merger.vm</template>
-                <template>transformer.vm</template>
-                <template>reader-stax.vm</template>
-                <template>writer-stax.vm</template>
-                <template>model-version.vm</template>
-              </templates>
-              <params>
-                <param>forcedIOModelVersion=4.0.0</param>
-                <param>packageModelV3=org.apache.maven.model</param>
-                <param>packageModelV4=org.apache.maven.api.model</param>
-                <param>packageToolV4=org.apache.maven.model.v4</param>
-                <param>isMavenModel=true</param>
-                <param>minimalVersion=4.0.0</param>
-              </params>
-            </configuration>
-          </execution>
-          <execution>
-            <id>modello-site-docs</id>
-            <phase>none</phase>
-          </execution>
-        </executions>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <systemPropertyVariables>
+            <localRepository>${settings.localRepository}</localRepository>
+          </systemPropertyVariables>
+        </configuration>
       </plugin>
     </plugins>
   </build>
-
 </project>

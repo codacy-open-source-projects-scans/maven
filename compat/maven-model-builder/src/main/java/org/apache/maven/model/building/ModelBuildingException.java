@@ -30,7 +30,7 @@ import org.apache.maven.model.Model;
  * before eventually failing to provide callers with rich error information. Use {@link #getProblems()} to query the
  * details of the failure.
  *
- * @deprecated use {@link org.apache.maven.api.services.ModelBuilder} instead
+ * @deprecated use {@code org.apache.maven.api.services.ModelBuilder} instead
  */
 @Deprecated(since = "4.0.0")
 public class ModelBuildingException extends Exception {
@@ -42,7 +42,7 @@ public class ModelBuildingException extends Exception {
      *
      * @param model The model that could not be built, may be {@code null}.
      * @param modelId The identifier of the model that could not be built, may be {@code null}.
-     * @param problems The problems that cause this exception, may be {@code null}.
+     * @param problems The problems that causes this exception, may be {@code null}.
      * @deprecated Use {@link #ModelBuildingException(ModelBuildingResult)} instead.
      */
     @Deprecated
@@ -130,7 +130,6 @@ public class ModelBuildingException extends Exception {
         return null;
     }
 
-    // Package protected for test
     static String toMessage(String modelId, List<ModelProblem> problems) {
         StringWriter buffer = new StringWriter(1024);
 
@@ -143,18 +142,15 @@ public class ModelBuildingException extends Exception {
             writer.print(" for ");
             writer.print(modelId);
         }
+        writer.println();
 
         for (ModelProblem problem : problems) {
-            writer.println();
-            writer.print("    - [");
+            writer.print("[");
             writer.print(problem.getSeverity());
             writer.print("] ");
             writer.print(problem.getMessage());
-            String location = ModelProblemUtils.formatLocation(problem, modelId);
-            if (!location.isEmpty()) {
-                writer.print(" @ ");
-                writer.print(location);
-            }
+            writer.print(" @ ");
+            writer.println(ModelProblemUtils.formatLocation(problem, modelId));
         }
 
         return buffer.toString();

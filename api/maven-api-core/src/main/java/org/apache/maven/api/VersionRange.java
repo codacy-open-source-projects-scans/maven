@@ -57,11 +57,11 @@ public interface VersionRange {
     Boundary getLowerBoundary();
 
     /**
-     * Returns a string representation of this version range
-     * @return the string representation of this version range
+     * {@return the string representation of this version}
      */
     @Nonnull
-    String asString();
+    @Override
+    String toString();
 
     /**
      * Represents range boundary.

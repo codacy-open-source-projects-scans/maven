@@ -156,14 +156,17 @@ public class ProjectDependencyGraphStub implements ProjectDependencyGraph {
         return dependencies;
     }
 
+    @Override
     public List<MavenProject> getAllProjects() {
         return Arrays.asList(A, B, C, X, Y, Z, UNKNOWN);
     }
 
+    @Override
     public List<MavenProject> getSortedProjects() {
         return Arrays.asList(A, B, C, X, Y, Z); // I'm not entirely sure about the order but this should do...
     }
 
+    @Override
     public List<MavenProject> getDownstreamProjects(MavenProject project, boolean transitive) {
         if (transitive) {
             throw new RuntimeException("Not implemented yet");
@@ -175,11 +178,8 @@ public class ProjectDependencyGraphStub implements ProjectDependencyGraph {
         return result;
     }
 
+    @Override
     public List<MavenProject> getUpstreamProjects(MavenProject project, boolean transitive) {
-        /*  if ( transitive )
-        {
-            throw new RuntimeException( "Not implemented yet" );
-        }*/
         List<MavenProject> result = new ArrayList<>();
         final List<Dependency> dependencies = getDependencies();
         for (Dependency dependency : dependencies) {

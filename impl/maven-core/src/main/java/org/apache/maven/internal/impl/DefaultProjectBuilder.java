@@ -41,6 +41,10 @@ import org.apache.maven.api.services.ProjectBuilderRequest;
 import org.apache.maven.api.services.ProjectBuilderResult;
 import org.apache.maven.api.services.Source;
 import org.apache.maven.artifact.repository.ArtifactRepository;
+import org.apache.maven.impl.DefaultDependencyResolverResult;
+import org.apache.maven.impl.InternalSession;
+import org.apache.maven.impl.MappedCollection;
+import org.apache.maven.impl.RequestTraceHelper;
 import org.apache.maven.model.building.ModelProblem;
 import org.apache.maven.model.building.ModelSource2;
 import org.apache.maven.project.DefaultProjectBuildingRequest;
@@ -64,7 +68,14 @@ public class DefaultProjectBuilder implements ProjectBuilder {
     @Override
     public ProjectBuilderResult build(ProjectBuilderRequest request)
             throws ProjectBuilderException, IllegalArgumentException {
+        InternalSession session = InternalSession.from(request.getSession());
+        return session.request(request, this::doBuild);
+    }
+
+    protected ProjectBuilderResult doBuild(ProjectBuilderRequest request)
+            throws ProjectBuilderException, IllegalArgumentException {
         InternalMavenSession session = InternalMavenSession.from(request.getSession());
+        RequestTraceHelper.ResolverTrace trace = RequestTraceHelper.enter(request.getSession(), request);
         try {
             List<ArtifactRepository> repositories = session.toArtifactRepositories(
                     request.getRepositories() != null ? request.getRepositories() : session.getRemoteRepositories());
@@ -85,6 +96,11 @@ public class DefaultProjectBuilder implements ProjectBuilder {
                 throw new IllegalArgumentException("Invalid request");
             }
             return new ProjectBuilderResult() {
+                @Override
+                public ProjectBuilderRequest getRequest() {
+                    return request;
+                }
+
                 @Nonnull
                 @Override
                 public String getProjectId() {
@@ -178,6 +194,8 @@ public class DefaultProjectBuilder implements ProjectBuilder {
             };
         } catch (ProjectBuildingException e) {
             throw new ProjectBuilderException("Unable to build project", e);
+        } finally {
+            RequestTraceHelper.exit(trace);
         }
     }
 

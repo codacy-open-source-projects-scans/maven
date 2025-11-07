@@ -34,7 +34,6 @@ import org.apache.maven.configuration.BeanConfigurationPathTranslator;
 import org.apache.maven.configuration.BeanConfigurationRequest;
 import org.apache.maven.configuration.BeanConfigurationValuePreprocessor;
 import org.apache.maven.configuration.BeanConfigurator;
-import org.apache.maven.internal.xml.XmlNodeImpl;
 import org.codehaus.plexus.component.configurator.ComponentConfigurationException;
 import org.codehaus.plexus.component.configurator.ConfigurationListener;
 import org.codehaus.plexus.component.configurator.converters.AbstractConfigurationConverter;
@@ -63,6 +62,7 @@ public class DefaultBeanConfigurator implements BeanConfigurator {
         converterLookup = new EnhancedConverterLookup();
     }
 
+    @Override
     public void configureBean(BeanConfigurationRequest request) throws BeanConfigurationException {
         Objects.requireNonNull(request, "request cannot be null");
         Objects.requireNonNull(request.getBean(), "request.bean cannot be null");
@@ -73,10 +73,10 @@ public class DefaultBeanConfigurator implements BeanConfigurator {
         }
 
         PlexusConfiguration plexusConfig;
-        if (configuration instanceof PlexusConfiguration) {
-            plexusConfig = (PlexusConfiguration) configuration;
-        } else if (configuration instanceof Xpp3Dom) {
-            plexusConfig = new XmlPlexusConfiguration((Xpp3Dom) configuration);
+        if (configuration instanceof PlexusConfiguration plexusConfiguration) {
+            plexusConfig = plexusConfiguration;
+        } else if (configuration instanceof Xpp3Dom xpp3Dom) {
+            plexusConfig = new XmlPlexusConfiguration(xpp3Dom);
         } else {
             throw new BeanConfigurationException("unsupported bean configuration source ("
                     + configuration.getClass().getName() + ")");
@@ -114,6 +114,7 @@ public class DefaultBeanConfigurator implements BeanConfigurator {
             translator = request.getPathTranslator();
         }
 
+        @Override
         public Object evaluate(String expression, Class<?> type) throws ExpressionEvaluationException {
             if (preprocessor != null) {
                 try {
@@ -125,10 +126,12 @@ public class DefaultBeanConfigurator implements BeanConfigurator {
             return expression;
         }
 
+        @Override
         public Object evaluate(String expression) throws ExpressionEvaluationException {
             return evaluate(expression, null);
         }
 
+        @Override
         public File alignToBaseDirectory(File file) {
             if (translator != null) {
                 return translator.translatePath(file);
@@ -168,7 +171,7 @@ public class DefaultBeanConfigurator implements BeanConfigurator {
             }
             String name = config.getName();
             Object value = evaluator.evaluate(config.getValue());
-            return new XmlNodeImpl(name, value != null ? value.toString() : null, null, children, null);
+            return XmlNode.newInstance(name, value != null ? value.toString() : null, null, children, null);
         }
     }
 
@@ -196,8 +199,8 @@ public class DefaultBeanConfigurator implements BeanConfigurator {
             final Object result =
                     super.fromConfiguration(lookup, configuration, type, enclosingType, loader, evaluator, listener);
 
-            return result instanceof Path
-                    ? evaluator.alignToBaseDirectory(((Path) result).toFile()).toPath()
+            return result instanceof Path path
+                    ? evaluator.alignToBaseDirectory(path.toFile()).toPath()
                     : result;
         }
     }

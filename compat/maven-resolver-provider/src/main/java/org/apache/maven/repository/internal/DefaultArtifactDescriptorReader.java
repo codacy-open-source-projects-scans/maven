@@ -182,8 +182,8 @@ public class DefaultArtifactDescriptorReader implements ArtifactDescriptorReader
                 pomArtifact = resolveResult.getArtifact();
                 result.setRepository(resolveResult.getRepository());
             } catch (ArtifactResolutionException e) {
-                if (e.getCause() instanceof ArtifactNotFoundException) {
-                    missingDescriptor(session, trace, a, (Exception) e.getCause());
+                if (e.getCause() instanceof ArtifactNotFoundException artifactNotFoundException) {
+                    missingDescriptor(session, trace, a, artifactNotFoundException);
                     if ((getPolicy(session, a, request) & ArtifactDescriptorPolicy.IGNORE_MISSING) != 0) {
                         return null;
                     }
@@ -196,8 +196,8 @@ public class DefaultArtifactDescriptorReader implements ArtifactDescriptorReader
 
             // TODO hack: don't rebuild model if it was already loaded during reactor resolution
             final WorkspaceReader workspace = session.getWorkspaceReader();
-            if (workspace instanceof MavenWorkspaceReader) {
-                model = ((MavenWorkspaceReader) workspace).findModel(pomArtifact);
+            if (workspace instanceof MavenWorkspaceReader mavenWorkspaceReader) {
+                model = mavenWorkspaceReader.findModel(pomArtifact);
                 if (model != null) {
                     return model;
                 }
@@ -223,7 +223,7 @@ public class DefaultArtifactDescriptorReader implements ArtifactDescriptorReader
                         remoteRepositoryManager,
                         request.getRepositories()));
                 if (resolveResult.getRepository() instanceof WorkspaceRepository) {
-                    modelRequest.setPomPath(pomArtifact.getPath());
+                    modelRequest.setPomFile(pomArtifact.getFile());
                 } else {
                     modelRequest.setModelSource(new ArtifactModelSource(
                             pomArtifact.getPath(),
@@ -240,19 +240,19 @@ public class DefaultArtifactDescriptorReader implements ArtifactDescriptorReader
                     if (logger.isDebugEnabled()) {
                         String problem = (problems.size() == 1) ? "problem" : "problems";
                         String problemPredicate = problem + ((problems.size() == 1) ? " was" : " were");
-                        String message = String.format(
+                        StringBuilder message = new StringBuilder(String.format(
                                 "%s %s encountered while building the effective model for %s during %s\n",
                                 problems.size(),
                                 problemPredicate,
                                 request.getArtifact(),
-                                RequestTraceHelper.interpretTrace(true, request.getTrace()));
-                        message += StringUtils.capitalizeFirstLetter(problem);
+                                RequestTraceHelper.interpretTrace(true, request.getTrace())));
+                        message.append(StringUtils.capitalizeFirstLetter(problem));
                         for (ModelProblem modelProblem : problems) {
-                            message += String.format(
+                            message.append(String.format(
                                     "\n* %s @ %s",
-                                    modelProblem.getMessage(), ModelProblemUtils.formatLocation(modelProblem, null));
+                                    modelProblem.getMessage(), ModelProblemUtils.formatLocation(modelProblem, null)));
                         }
-                        logger.warn(message);
+                        logger.warn(message.toString());
                     } else {
                         logger.warn(
                                 "{} {} encountered while building the effective model for {} during {} (use -X to see details)",
@@ -265,8 +265,8 @@ public class DefaultArtifactDescriptorReader implements ArtifactDescriptorReader
                 model = modelResult.getEffectiveModel();
             } catch (ModelBuildingException e) {
                 for (ModelProblem problem : e.getProblems()) {
-                    if (problem.getException() instanceof UnresolvableModelException) {
-                        result.addException(problem.getException());
+                    if (problem.getException() instanceof UnresolvableModelException unresolvableModelException) {
+                        result.addException(unresolvableModelException);
                         throw new ArtifactDescriptorException(result);
                     }
                 }

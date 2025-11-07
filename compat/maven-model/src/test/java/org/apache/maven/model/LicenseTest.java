@@ -20,6 +20,7 @@ package org.apache.maven.model;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -45,7 +46,7 @@ class LicenseTest {
     @Test
     void testEqualsIdentity() {
         License thing = new License();
-        assertTrue(thing.equals(thing));
+        assertTrue(thing.equals(thing), "Expected " + thing + " to equal " + thing);
     }
 
     @Test
@@ -53,6 +54,7 @@ class LicenseTest {
         assertNotNull(new License().toString());
     }
 
+    @Test
     public void testToStringNotNonsense() {
         License license = new License();
         license.setName("Unlicense");
@@ -60,6 +62,6 @@ class LicenseTest {
 
         String s = license.toString();
 
-        assert "License {name=Unlicense, url=http://lic.localdomain}".equals(s) : s;
+        assertEquals("License {name=Unlicense, url=http://lic.localdomain}", s);
     }
 }

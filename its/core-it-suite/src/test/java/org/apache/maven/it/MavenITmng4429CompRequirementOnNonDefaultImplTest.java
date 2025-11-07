@@ -32,10 +32,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 public class MavenITmng4429CompRequirementOnNonDefaultImplTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng4429CompRequirementOnNonDefaultImplTest() {
-        super(ALL_MAVEN_VERSIONS);
-    }
-
     /**
      * Test that a component requirement can be satisfied from an implementation that does not have the "default" hint.
      *
@@ -45,7 +41,16 @@ public class MavenITmng4429CompRequirementOnNonDefaultImplTest extends AbstractM
     public void testit() throws Exception {
         File testDir = extractResources("/mng-4429");
 
-        Verifier verifier = newVerifier(testDir.getAbsolutePath());
+        // First, build the test plugin
+        Verifier verifier = newVerifier(new File(testDir, "maven-it-plugin-no-default-comp").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Then, run the test project that uses the plugin
+        verifier = newVerifier(testDir.getAbsolutePath());
         verifier.setAutoclean(false);
         verifier.deleteDirectory("target");
         verifier.addCliArgument("validate");

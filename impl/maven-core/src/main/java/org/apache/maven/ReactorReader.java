@@ -48,7 +48,7 @@ import org.apache.maven.api.services.Lookup;
 import org.apache.maven.eventspy.EventSpy;
 import org.apache.maven.execution.ExecutionEvent;
 import org.apache.maven.execution.MavenSession;
-import org.apache.maven.internal.impl.resolver.MavenWorkspaceReader;
+import org.apache.maven.impl.resolver.MavenWorkspaceReader;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.artifact.ProjectArtifact;
 import org.eclipse.aether.artifact.Artifact;
@@ -70,7 +70,7 @@ class ReactorReader implements MavenWorkspaceReader {
     public static final String PROJECT_LOCAL_REPO = "project-local-repo";
 
     private static final Collection<String> COMPILE_PHASE_TYPES = new HashSet<>(
-            Arrays.asList("jar", "ejb-client", "war", "rar", "ejb3", "par", "sar", "wsr", "har", "app-client"));
+            Arrays.asList("jar", "ejb-client", "war", "rar", "ejb", "par", "sar", "wsr", "har", "app-client"));
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ReactorReader.class);
 
@@ -93,10 +93,12 @@ class ReactorReader implements MavenWorkspaceReader {
     // Public API
     //
 
+    @Override
     public WorkspaceRepository getRepository() {
         return repository;
     }
 
+    @Override
     public File findArtifact(Artifact artifact) {
         MavenProject project = getProject(artifact);
 
@@ -111,12 +113,20 @@ class ReactorReader implements MavenWorkspaceReader {
         // No project, but most certainly a dependency which has been built previously
         File packagedArtifactFile = findInProjectLocalRepository(artifact);
         if (packagedArtifactFile != null && packagedArtifactFile.exists()) {
+            // Check if artifact is up-to-date (only for non-POM artifacts)
+            if (!"pom".equals(artifact.getExtension())) {
+                project = getProject(artifact, getAllProjects());
+                if (project != null) {
+                    isPackagedArtifactUpToDate(project, packagedArtifactFile);
+                }
+            }
             return packagedArtifactFile;
         }
 
         return null;
     }
 
+    @Override
     public List<String> findVersions(Artifact artifact) {
         List<String> versions = getProjects()
                 .getOrDefault(artifact.getGroupId(), Collections.emptyMap())
@@ -168,7 +178,9 @@ class ReactorReader implements MavenWorkspaceReader {
         File packagedArtifactFile = findInProjectLocalRepository(artifact);
         if (packagedArtifactFile != null
                 && packagedArtifactFile.exists()
-                && (!checkUptodate || isPackagedArtifactUpToDate(project, packagedArtifactFile))) {
+                && (!checkUptodate
+                        || "pom".equals(artifact.getExtension())
+                        || isPackagedArtifactUpToDate(project, packagedArtifactFile))) {
             return packagedArtifactFile;
         }
 
@@ -244,7 +256,14 @@ class ReactorReader implements MavenWorkspaceReader {
                                     + "please run a full `mvn package` build",
                             relativizeOutputFile(outputFile),
                             project.getArtifactId());
-                    return true;
+                    return false;
+                } else if (LOGGER.isDebugEnabled()) {
+                    LOGGER.debug(
+                            "File '{}' timestamp {} vs artifact timestamp {} for '{}'",
+                            relativizeOutputFile(outputFile),
+                            outputFileLastModified,
+                            artifactLastModified,
+                            project.getArtifactId());
                 }
             }
 
@@ -311,6 +330,18 @@ class ReactorReader implements MavenWorkspaceReader {
     }
 
     private File findInProjectLocalRepository(Artifact artifact) {
+        // Prefer the consumer POM when resolving POMs from the project-local repository,
+        // to avoid treating a build POM as a repository (consumer) POM.
+        if ("pom".equals(artifact.getExtension())) {
+            String classifier = artifact.getClassifier();
+            if (classifier == null || classifier.isEmpty()) {
+                Path consumer = getArtifactPath(
+                        artifact.getGroupId(), artifact.getArtifactId(), artifact.getBaseVersion(), "consumer", "pom");
+                if (Files.isRegularFile(consumer)) {
+                    return consumer.toFile();
+                }
+            }
+        }
         Path target = getArtifactPath(artifact);
         return Files.isRegularFile(target) ? target.toFile() : null;
     }
@@ -333,14 +364,18 @@ class ReactorReader implements MavenWorkspaceReader {
                     if (!Objects.equals(phase, phases.peekLast())) {
                         phases.addLast(phase);
                         if ("clean".equals(phase)) {
-                            cleanProjectLocalRepository(project);
+                            synchronized (project) {
+                                cleanProjectLocalRepository(project);
+                            }
                         }
                     }
                 }
                 break;
             case ProjectSucceeded:
             case ForkedProjectSucceeded:
-                installIntoProjectLocalRepository(project);
+                synchronized (project) {
+                    installIntoProjectLocalRepository(project);
+                }
                 break;
             default:
                 break;
@@ -471,8 +506,11 @@ class ReactorReader implements MavenWorkspaceReader {
     }
 
     private MavenProject getProject(Artifact artifact) {
-        return getAllProjects()
-                .getOrDefault(artifact.getGroupId(), Collections.emptyMap())
+        return getProject(artifact, getProjects());
+    }
+
+    private MavenProject getProject(Artifact artifact, Map<String, Map<String, Map<String, MavenProject>>> projects) {
+        return projects.getOrDefault(artifact.getGroupId(), Collections.emptyMap())
                 .getOrDefault(artifact.getArtifactId(), Collections.emptyMap())
                 .getOrDefault(artifact.getBaseVersion(), null);
     }
@@ -533,9 +571,9 @@ class ReactorReader implements MavenWorkspaceReader {
 
         @Override
         public void onEvent(Object event) throws Exception {
-            if (event instanceof ExecutionEvent) {
+            if (event instanceof ExecutionEvent executionEvent) {
                 ReactorReader reactorReader = lookup.lookup(ReactorReader.class);
-                reactorReader.processEvent((ExecutionEvent) event);
+                reactorReader.processEvent(executionEvent);
             }
         }
 

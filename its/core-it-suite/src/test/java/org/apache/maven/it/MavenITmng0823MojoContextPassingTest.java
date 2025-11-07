@@ -29,9 +29,6 @@ import org.junit.jupiter.api.Test;
  *
  */
 public class MavenITmng0823MojoContextPassingTest extends AbstractMavenIntegrationTestCase {
-    public MavenITmng0823MojoContextPassingTest() {
-        super(ALL_MAVEN_VERSIONS);
-    }
 
     /**
      * Tests context passing between mojos in the same plugin.
@@ -42,7 +39,16 @@ public class MavenITmng0823MojoContextPassingTest extends AbstractMavenIntegrati
     public void testitMNG0823() throws Exception {
         File testDir = extractResources("/mng-0823");
 
-        Verifier verifier = newVerifier(testDir.getAbsolutePath());
+        // First, build the test plugin
+        Verifier verifier = newVerifier(new File(testDir, "maven-it-plugin-context-passing").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Then, run the test project that uses the plugin
+        verifier = newVerifier(testDir.getAbsolutePath());
         verifier.setAutoclean(false);
         verifier.deleteDirectory("target");
         verifier.addCliArguments(

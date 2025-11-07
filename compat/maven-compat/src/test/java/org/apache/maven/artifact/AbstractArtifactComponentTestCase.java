@@ -69,8 +69,8 @@ import org.eclipse.aether.util.graph.manager.ClassicDependencyManager;
 import org.eclipse.aether.util.graph.selector.AndDependencySelector;
 import org.eclipse.aether.util.graph.selector.ExclusionDependencySelector;
 import org.eclipse.aether.util.graph.transformer.ChainedDependencyGraphTransformer;
+import org.eclipse.aether.util.graph.transformer.ConfigurableVersionSelector;
 import org.eclipse.aether.util.graph.transformer.ConflictResolver;
-import org.eclipse.aether.util.graph.transformer.NearestVersionSelector;
 import org.eclipse.aether.util.graph.transformer.SimpleOptionalitySelector;
 import org.eclipse.aether.util.repository.SimpleArtifactDescriptorPolicy;
 import org.junit.jupiter.api.BeforeEach;
@@ -310,7 +310,7 @@ public abstract class AbstractArtifactComponentTestCase // extends PlexusTestCas
         DependencyTraverser depTraverser = new FatArtifactTraverser();
         session.setDependencyTraverser(depTraverser);
 
-        DependencyManager depManager = new ClassicDependencyManager(true, session.getScopeManager());
+        DependencyManager depManager = new ClassicDependencyManager(session.getScopeManager());
         session.setDependencyManager(depManager);
 
         DependencySelector depFilter = new AndDependencySelector(
@@ -323,7 +323,7 @@ public abstract class AbstractArtifactComponentTestCase // extends PlexusTestCas
         ScopeManagerImpl scopeManager = new ScopeManagerImpl(Maven4ScopeManagerConfiguration.INSTANCE);
         session.setScopeManager(scopeManager);
         DependencyGraphTransformer transformer = new ConflictResolver(
-                new NearestVersionSelector(), new ManagedScopeSelector(scopeManager),
+                new ConfigurableVersionSelector(), new ManagedScopeSelector(scopeManager),
                 new SimpleOptionalitySelector(), new ManagedScopeDeriver(scopeManager));
         transformer =
                 new ChainedDependencyGraphTransformer(transformer, new ManagedDependencyContextRefiner(scopeManager));
@@ -334,13 +334,13 @@ public abstract class AbstractArtifactComponentTestCase // extends PlexusTestCas
         return session;
     }
 
-    private static final char[] hexCode = "0123456789ABCDEF".toCharArray();
+    private static final char[] HEX_CODE = "0123456789ABCDEF".toCharArray();
 
     private static String printHexBinary(byte[] data) {
         StringBuilder r = new StringBuilder(data.length * 2);
         for (byte b : data) {
-            r.append(hexCode[(b >> 4) & 0xF]);
-            r.append(hexCode[(b & 0xF)]);
+            r.append(HEX_CODE[(b >> 4) & 0xF]);
+            r.append(HEX_CODE[(b & 0xF)]);
         }
         return r.toString();
     }

@@ -19,12 +19,11 @@ under the License.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
+
   <parent>
     <groupId>org.apache.maven</groupId>
-    <artifactId>maven</artifactId>
-    <version>4.0.0-rc-3-SNAPSHOT</version>
-
-    <relativePath>../../</relativePath>
+    <artifactId>maven-compat-modules</artifactId>
+    <version>4.1.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>maven-toolchain-builder</artifactId>
@@ -39,11 +38,7 @@ under the License.
     </dependency>
     <dependency>
       <groupId>org.apache.maven</groupId>
-      <artifactId>maven-api-core</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.maven</groupId>
-      <artifactId>maven-impl</artifactId>
+      <artifactId>maven-support</artifactId>
     </dependency>
     <dependency>
       <groupId>org.apache.maven</groupId>
@@ -55,6 +50,10 @@ under the License.
     </dependency>
     <dependency>
       <groupId>org.codehaus.plexus</groupId>
+      <artifactId>plexus-xml</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.codehaus.plexus</groupId>
       <artifactId>plexus-interpolation</artifactId>
     </dependency>
     <dependency>
@@ -63,11 +62,6 @@ under the License.
       <scope>provided</scope>
     </dependency>
 
-    <dependency>
-      <groupId>org.codehaus.plexus</groupId>
-      <artifactId>plexus-xml</artifactId>
-      <scope>test</scope>
-    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter-api</artifactId>
@@ -81,6 +75,11 @@ under the License.
     <dependency>
       <groupId>org.mockito</groupId>
       <artifactId>mockito-junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-impl</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -103,9 +102,9 @@ under the License.
               <include>org.apache.maven.toolchain.merge</include>
             </includes>
             <excludes>
-              <exclude>org.apache.maven.toolchain.building.DefaultToolchainsBuilder#DefaultToolchainsBuilder():CONSTRUCTOR_REMOVED</exclude>
-              <exclude>org.apache.maven.toolchain.merge.MavenToolchainMerger#getToolchainModelKey(org.apache.maven.toolchain.model.ToolchainModel):METHOD_REMOVED</exclude>
-              <exclude>org.apache.maven.toolchain.merge.MavenToolchainMerger#mergeToolchainModelConfiguration(org.apache.maven.toolchain.model.ToolchainModel,org.apache.maven.toolchain.model.ToolchainModel):METHOD_REMOVED</exclude>
+              <!--              <exclude>org.apache.maven.toolchain.building.DefaultToolchainsBuilder#DefaultToolchainsBuilder():CONSTRUCTOR_REMOVED</exclude>-->
+              <!--              <exclude>org.apache.maven.toolchain.merge.MavenToolchainMerger#getToolchainModelKey(org.apache.maven.toolchain.model.ToolchainModel):METHOD_REMOVED</exclude>-->
+              <!--              <exclude>org.apache.maven.toolchain.merge.MavenToolchainMerger#mergeToolchainModelConfiguration(org.apache.maven.toolchain.model.ToolchainModel,org.apache.maven.toolchain.model.ToolchainModel):METHOD_REMOVED</exclude>-->
             </excludes>
           </parameter>
           <oldVersion>

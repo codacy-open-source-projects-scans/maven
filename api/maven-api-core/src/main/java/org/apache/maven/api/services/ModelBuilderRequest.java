@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.apache.maven.api.RemoteRepository;
 import org.apache.maven.api.Session;
@@ -32,7 +33,7 @@ import org.apache.maven.api.annotations.NotThreadSafe;
 import org.apache.maven.api.annotations.Nullable;
 import org.apache.maven.api.model.Profile;
 
-import static org.apache.maven.api.services.BaseRequest.nonNull;
+import static java.util.Objects.requireNonNull;
 
 /**
  * Request used to build a {@link org.apache.maven.api.Project} using
@@ -42,7 +43,7 @@ import static org.apache.maven.api.services.BaseRequest.nonNull;
  */
 @Experimental
 @Immutable
-public interface ModelBuilderRequest {
+public interface ModelBuilderRequest extends RepositoryAwareRequest {
 
     /**
      * The possible request types for building a model.
@@ -58,7 +59,7 @@ public interface ModelBuilderRequest {
         BUILD_EFFECTIVE,
         /**
          * The request is used specifically to parse the POM used as a basis for creating the consumer POM.
-         * This POM will not ungergo any profile activation.
+         * This POM will not undergo any profile activation.
          */
         BUILD_CONSUMER,
         /**
@@ -86,9 +87,6 @@ public interface ModelBuilderRequest {
          */
         REQUEST_DOMINANT,
     }
-
-    @Nonnull
-    Session getSession();
 
     @Nonnull
     ModelSource getSource();
@@ -136,31 +134,28 @@ public interface ModelBuilderRequest {
     RepositoryMerging getRepositoryMerging();
 
     @Nullable
-    List<RemoteRepository> getRepositories();
-
-    @Nullable
     ModelTransformer getLifecycleBindingsInjector();
 
     @Nonnull
     static ModelBuilderRequest build(@Nonnull ModelBuilderRequest request, @Nonnull ModelSource source) {
-        return builder(nonNull(request, "request cannot be null"))
-                .source(nonNull(source, "source cannot be null"))
+        return builder(requireNonNull(request, "request cannot be null"))
+                .source(requireNonNull(source, "source cannot be null"))
                 .build();
     }
 
     @Nonnull
     static ModelBuilderRequest build(@Nonnull Session session, @Nonnull ModelSource source) {
         return builder()
-                .session(nonNull(session, "session cannot be null"))
-                .source(nonNull(source, "source cannot be null"))
+                .session(requireNonNull(session, "session cannot be null"))
+                .source(requireNonNull(source, "source cannot be null"))
                 .build();
     }
 
     @Nonnull
     static ModelBuilderRequest build(@Nonnull Session session, @Nonnull Path path) {
         return builder()
-                .session(nonNull(session, "session cannot be null"))
-                .source(ModelSource.fromPath(path))
+                .session(requireNonNull(session, "session cannot be null"))
+                .source(Sources.buildSource(path))
                 .build();
     }
 
@@ -177,6 +172,7 @@ public interface ModelBuilderRequest {
     @NotThreadSafe
     class ModelBuilderRequestBuilder {
         Session session;
+        RequestTrace trace;
         RequestType requestType;
         boolean locationTracking;
         boolean recursive;
@@ -194,6 +190,7 @@ public interface ModelBuilderRequest {
 
         ModelBuilderRequestBuilder(ModelBuilderRequest request) {
             this.session = request.getSession();
+            this.trace = request.getTrace();
             this.requestType = request.getRequestType();
             this.locationTracking = request.isLocationTracking();
             this.recursive = request.isRecursive();
@@ -210,6 +207,11 @@ public interface ModelBuilderRequest {
 
         public ModelBuilderRequestBuilder session(Session session) {
             this.session = session;
+            return this;
+        }
+
+        public ModelBuilderRequestBuilder trace(RequestTrace trace) {
+            this.trace = trace;
             return this;
         }
 
@@ -276,6 +278,7 @@ public interface ModelBuilderRequest {
         public ModelBuilderRequest build() {
             return new DefaultModelBuilderRequest(
                     session,
+                    trace,
                     requestType,
                     locationTracking,
                     recursive,
@@ -307,6 +310,7 @@ public interface ModelBuilderRequest {
             @SuppressWarnings("checkstyle:ParameterNumber")
             DefaultModelBuilderRequest(
                     @Nonnull Session session,
+                    @Nullable RequestTrace trace,
                     @Nonnull RequestType requestType,
                     boolean locationTracking,
                     boolean recursive,
@@ -319,8 +323,8 @@ public interface ModelBuilderRequest {
                     RepositoryMerging repositoryMerging,
                     List<RemoteRepository> repositories,
                     ModelTransformer lifecycleBindingsInjector) {
-                super(session);
-                this.requestType = nonNull(requestType, "requestType cannot be null");
+                super(session, trace);
+                this.requestType = requireNonNull(requestType, "requestType cannot be null");
                 this.locationTracking = locationTracking;
                 this.recursive = recursive;
                 this.source = source;
@@ -331,7 +335,7 @@ public interface ModelBuilderRequest {
                         systemProperties != null ? Map.copyOf(systemProperties) : session.getSystemProperties();
                 this.userProperties = userProperties != null ? Map.copyOf(userProperties) : session.getUserProperties();
                 this.repositoryMerging = repositoryMerging;
-                this.repositories = repositories != null ? List.copyOf(repositories) : null;
+                this.repositories = repositories != null ? List.copyOf(validate(repositories)) : null;
                 this.lifecycleBindingsInjector = lifecycleBindingsInjector;
             }
 
@@ -394,6 +398,57 @@ public interface ModelBuilderRequest {
             @Override
             public ModelTransformer getLifecycleBindingsInjector() {
                 return lifecycleBindingsInjector;
+            }
+
+            @Override
+            public boolean equals(Object o) {
+                return o instanceof DefaultModelBuilderRequest that
+                        && locationTracking == that.locationTracking
+                        && recursive == that.recursive
+                        && requestType == that.requestType
+                        && Objects.equals(source, that.source)
+                        && Objects.equals(profiles, that.profiles)
+                        && Objects.equals(activeProfileIds, that.activeProfileIds)
+                        && Objects.equals(inactiveProfileIds, that.inactiveProfileIds)
+                        && Objects.equals(systemProperties, that.systemProperties)
+                        && Objects.equals(userProperties, that.userProperties)
+                        && repositoryMerging == that.repositoryMerging
+                        && Objects.equals(repositories, that.repositories)
+                        && Objects.equals(lifecycleBindingsInjector, that.lifecycleBindingsInjector);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(
+                        requestType,
+                        locationTracking,
+                        recursive,
+                        source,
+                        profiles,
+                        activeProfileIds,
+                        inactiveProfileIds,
+                        systemProperties,
+                        userProperties,
+                        repositoryMerging,
+                        repositories,
+                        lifecycleBindingsInjector);
+            }
+
+            @Override
+            public String toString() {
+                return "ModelBuilderRequest[" + "requestType="
+                        + requestType + ", locationTracking="
+                        + locationTracking + ", recursive="
+                        + recursive + ", source="
+                        + source + ", profiles="
+                        + profiles + ", activeProfileIds="
+                        + activeProfileIds + ", inactiveProfileIds="
+                        + inactiveProfileIds + ", systemProperties="
+                        + systemProperties + ", userProperties="
+                        + userProperties + ", repositoryMerging="
+                        + repositoryMerging + ", repositories="
+                        + repositories + ", lifecycleBindingsInjector="
+                        + lifecycleBindingsInjector + ']';
             }
         }
     }

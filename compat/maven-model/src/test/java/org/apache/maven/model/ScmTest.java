@@ -27,7 +27,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests {@code Scm}.
- *
  */
 class ScmTest {
 
@@ -46,7 +45,7 @@ class ScmTest {
     @Test
     void testEqualsIdentity() {
         Scm thing = new Scm();
-        assertTrue(thing.equals(thing));
+        assertTrue(thing.equals(thing), "Expected " + thing + " to equal " + thing);
     }
 
     @Test
@@ -54,6 +53,7 @@ class ScmTest {
         assertNotNull(new Scm().toString());
     }
 
+    @Test
     public void testToStringNotNonsense() {
         Scm scm = new Scm();
         scm.setConnection("scm:git:git://git.localdomain/model");

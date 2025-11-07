@@ -31,7 +31,7 @@ import org.apache.maven.artifact.DefaultArtifact;
 import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.execution.MavenExecutionResult;
 import org.apache.maven.execution.MavenSession;
-import org.apache.maven.internal.impl.resolver.MavenWorkspaceReader;
+import org.apache.maven.impl.resolver.MavenWorkspaceReader;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.MavenProjectHelper;
 import org.junit.jupiter.api.Test;
@@ -70,6 +70,7 @@ class DefaultMavenTest extends AbstractCoreMavenComponentTestCase {
                 createMavenExecutionRequest(getProject("simple")).setGoals(asList("validate"));
 
         MavenExecutionResult result = maven.execute(request);
+        assertNotNull(result);
 
         Class<?> wsrClass = wsrClassCatcher.wsrClassRef.get();
         assertNotNull(wsrClass, "wsr cannot be null");

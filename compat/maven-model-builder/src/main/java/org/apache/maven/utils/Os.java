@@ -25,7 +25,7 @@ import java.util.stream.Stream;
 /**
  * OS support
  *
- * @deprecated use {@link org.apache.maven.api.services.ModelBuilder} instead
+ * @deprecated use {@code org.apache.maven.api.services.ModelBuilder} instead
  */
 @Deprecated(since = "4.0.0")
 public class Os {
@@ -128,6 +128,11 @@ public class Os {
      */
     private static final String DARWIN = "darwin";
 
+    /**
+     * The path separator.
+     */
+    private static final String PATH_SEP = System.getProperty("path.separator");
+
     static {
         // Those two public constants are initialized here, as they need all the private constants
         // above to be initialized first, but the code style imposes the public constants to be
@@ -183,9 +188,10 @@ public class Os {
             case FAMILY_DOS -> File.pathSeparatorChar == ';' && !isFamily(FAMILY_NETWARE, actualOsName) && !isWindows;
             case FAMILY_MAC -> actualOsName.contains(FAMILY_MAC) || actualOsName.contains(DARWIN);
             case FAMILY_TANDEM -> actualOsName.contains("nonstop_kernel");
-            case FAMILY_UNIX -> File.pathSeparatorChar == ':'
-                    && !isFamily(FAMILY_OPENVMS, actualOsName)
-                    && (!isFamily(FAMILY_MAC, actualOsName) || actualOsName.endsWith("x"));
+            case FAMILY_UNIX ->
+                File.pathSeparatorChar == ':'
+                        && !isFamily(FAMILY_OPENVMS, actualOsName)
+                        && (!isFamily(FAMILY_MAC, actualOsName) || actualOsName.endsWith("x"));
             case FAMILY_ZOS -> actualOsName.contains(FAMILY_ZOS) || actualOsName.contains(FAMILY_OS390);
             case FAMILY_OS400 -> actualOsName.contains(FAMILY_OS400);
             case FAMILY_OPENVMS -> actualOsName.contains(FAMILY_OPENVMS);

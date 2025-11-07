@@ -38,10 +38,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class MavenITmng5482AetherNotFoundTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng5482AetherNotFoundTest() {
-        super("[3.1-A,)");
-    }
-
     @Test
     public void testPluginDependency() throws IOException, VerificationException {
         check("plugin-dependency");
@@ -65,8 +61,7 @@ public class MavenITmng5482AetherNotFoundTest extends AbstractMavenIntegrationTe
         verifier.setAutoclean(false);
 
         verifier.addCliArgument("validate");
-        VerificationException exception =
-                assertThrows(VerificationException.class, verifier::execute, "should throw an error during execution.");
+        assertThrows(VerificationException.class, verifier::execute, "should throw an error during execution.");
 
         List<String> lines = verifier.loadFile(new File(testDir, "log.txt"), false);
 

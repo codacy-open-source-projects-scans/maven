@@ -40,7 +40,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Objects;
 import java.util.function.BinaryOperator;
-import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -49,14 +49,13 @@ import org.apache.maven.api.xml.XmlNode;
 #foreach ( $class in $model.allClasses )
 import ${packageModelV4}.${class.name};
 #end
-import org.apache.maven.internal.xml.XmlNodeImpl;
 
 @Generated
 public class ${className} {
 
-    private final Function<String, String> transformer;
+    private final UnaryOperator<String> transformer;
 
-    public ${className}(Function<String, String> transformer) {
+    public ${className}(UnaryOperator<String> transformer) {
         this.transformer = transformer;
     }
 
@@ -141,7 +140,7 @@ public class ${className} {
 
   #end
 #end
-    protected <T> List<T> transform(List<T> list, Function<T, T> transformer) {
+    protected <T> List<T> transform(List<T> list, UnaryOperator<T> transformer) {
         List<T> newList = list;
         for (int i = 0; i < list.size(); i++) {
             T oldVal = list.get(i);
@@ -156,7 +155,7 @@ public class ${className} {
         return newList;
     }
 
-    protected <T> Map<String, T> transform(Map<String, T> map, Function<T, T> transformer) {
+    protected <T> Map<String, T> transform(Map<String, T> map, UnaryOperator<T> transformer) {
         Map<String, T> newMap = map;
         for (String key : map.keySet()) {
             T oldVal = map.get(key);
@@ -173,15 +172,22 @@ public class ${className} {
 
     protected XmlNode transform(XmlNode node) {
         if (node != null) {
-            String oldValue = node.getValue();
+            String oldValue = node.value();
             String newValue = transform(oldValue);
-            Map<String, String> oldAttrs = node.getAttributes();
+            Map<String, String> oldAttrs = node.attributes();
             Map<String, String> newAttrs = transform(oldAttrs, this::transform);
-            List<XmlNode> oldChildren = node.getChildren();
+            List<XmlNode> oldChildren = node.children();
             List<XmlNode> newChildren = transform(oldChildren, this::transform);
             if (oldValue != newValue || oldAttrs != newAttrs || oldChildren != newChildren) {
-                return new XmlNodeImpl(node.getPrefix(), node.getNamespaceUri(), node.getName(),
-                        newValue, newAttrs, newChildren, node.getInputLocation());
+                return XmlNode.newBuilder()
+                                .name(node.name())
+                                .prefix(node.prefix())
+                                .namespaceUri(node.namespaceUri())
+                                .value(newValue)
+                                .attributes(newAttrs)
+                                .children(newChildren)
+                                .inputLocation(node.inputLocation())
+                                .build();
             }
         }
         return node;

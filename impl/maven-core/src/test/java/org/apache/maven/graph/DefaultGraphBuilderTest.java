@@ -19,6 +19,7 @@
 package org.apache.maven.graph;
 
 import java.io.File;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -28,16 +29,16 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.maven.MavenExecutionException;
+import org.apache.maven.api.services.model.ModelProcessor;
 import org.apache.maven.execution.BuildResumptionDataRepository;
 import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.execution.ProjectActivation;
 import org.apache.maven.execution.ProjectDependencyGraph;
+import org.apache.maven.impl.model.DefaultModelProcessor;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Parent;
 import org.apache.maven.model.building.Result;
-import org.apache.maven.model.locator.DefaultModelLocator;
-import org.apache.maven.model.locator.ModelLocator;
 import org.apache.maven.project.MavenProject;
 import org.apache.maven.project.ProjectBuilder;
 import org.apache.maven.project.ProjectBuildingException;
@@ -62,8 +63,9 @@ import static java.util.stream.Collectors.toList;
 import static org.apache.maven.execution.MavenExecutionRequest.REACTOR_MAKE_DOWNSTREAM;
 import static org.apache.maven.execution.MavenExecutionRequest.REACTOR_MAKE_UPSTREAM;
 import static org.apache.maven.graph.DefaultGraphBuilderTest.ScenarioBuilder.scenario;
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -103,10 +105,10 @@ class DefaultGraphBuilderTest {
 
     // Not using mocks for these strategies - a mock would just copy the actual implementation.
 
-    private final ModelLocator modelLocator = new DefaultModelLocator();
+    private final ModelProcessor modelProcessor = new DefaultModelProcessor(null, List.of());
     private final PomlessCollectionStrategy pomlessCollectionStrategy = new PomlessCollectionStrategy(projectBuilder);
     private final MultiModuleCollectionStrategy multiModuleCollectionStrategy =
-            new MultiModuleCollectionStrategy(modelLocator, projectsSelector);
+            new MultiModuleCollectionStrategy(modelProcessor, projectsSelector);
     private final RequestPomCollectionStrategy requestPomCollectionStrategy =
             new RequestPomCollectionStrategy(projectsSelector);
 
@@ -191,7 +193,7 @@ class DefaultGraphBuilderTest {
                 scenario("Selected missing project as required and as optional")
                         .activeRequiredProjects("non-existing-module")
                         .activeOptionalProjects("non-existing-module")
-                        .expectResult(MavenExecutionException.class, "not find the selected project"),
+                        .expectResult(MavenExecutionException.class, "do not exist"),
                 scenario("Resuming from project")
                         .resumeFrom(MODULE_B)
                         .expectResult(MODULE_B, MODULE_C_2, INDEPENDENT_MODULE),
@@ -263,7 +265,7 @@ class DefaultGraphBuilderTest {
     static class SelectedProjectsResult implements ExpectedResult {
         final List<String> projectNames;
 
-        public SelectedProjectsResult(List<String> projectSelectors) {
+        SelectedProjectsResult(List<String> projectSelectors) {
             this.projectNames = projectSelectors;
         }
     }
@@ -272,7 +274,7 @@ class DefaultGraphBuilderTest {
         final Class<? extends Throwable> expected;
         final String partOfMessage;
 
-        public ExceptionThrown(final Class<? extends Throwable> expected, final String partOfMessage) {
+        ExceptionThrown(final Class<? extends Throwable> expected, final String partOfMessage) {
             this.expected = expected;
             this.partOfMessage = partOfMessage;
         }
@@ -280,6 +282,7 @@ class DefaultGraphBuilderTest {
 
     @ParameterizedTest
     @MethodSource("parameters")
+    @SuppressWarnings("checkstyle:ParameterNumber")
     void testGetReactorProjects(
             String parameterDescription,
             List<String> parameterActiveRequiredProjects,
@@ -298,6 +301,7 @@ class DefaultGraphBuilderTest {
         parameterInactiveRequiredProjects.forEach(projectActivation::deactivateRequiredProject);
         parameterInactiveOptionalProjects.forEach(projectActivation::deactivateOptionalProject);
 
+        when(mavenExecutionRequest.getRootDirectory()).thenReturn(Paths.get("."));
         when(mavenExecutionRequest.getProjectActivation()).thenReturn(projectActivation);
         when(mavenExecutionRequest.getMakeBehavior()).thenReturn(parameterMakeBehavior);
         when(mavenExecutionRequest.getPom()).thenReturn(parameterRequestedPom);
@@ -310,26 +314,23 @@ class DefaultGraphBuilderTest {
         Result<ProjectDependencyGraph> result = graphBuilder.build(session);
 
         // Then
-        if (parameterExpectedResult instanceof SelectedProjectsResult) {
-            assertThat(result.hasErrors())
-                    .withFailMessage("Expected result not to have errors")
-                    .isFalse();
-            List<String> expectedProjectNames = ((SelectedProjectsResult) parameterExpectedResult).projectNames;
+        if (parameterExpectedResult instanceof SelectedProjectsResult selectedProjectsResult) {
+            assertFalse(result.hasErrors(), "Expected result not to have errors");
+            List<String> expectedProjectNames = selectedProjectsResult.projectNames;
             List<MavenProject> actualReactorProjects = result.get().getSortedProjects();
             List<MavenProject> expectedReactorProjects =
                     expectedProjectNames.stream().map(artifactIdProjectMap::get).collect(toList());
             assertEquals(expectedReactorProjects, actualReactorProjects, parameterDescription);
         } else {
-            assertThat(result.hasErrors())
-                    .withFailMessage("Expected result to have errors")
-                    .isTrue();
+            assertTrue(result.hasErrors(), "Expected result to have errors");
             Class<? extends Throwable> expectedException = ((ExceptionThrown) parameterExpectedResult).expected;
             String partOfMessage = ((ExceptionThrown) parameterExpectedResult).partOfMessage;
 
-            assertThat(result.getProblems()).hasSize(1);
-            result.getProblems().forEach(p -> assertThat(p.getException())
-                    .isInstanceOf(expectedException)
-                    .hasMessageContaining(partOfMessage));
+            assertEquals(1, ((Collection) result.getProblems()).size());
+            result.getProblems().forEach(p -> {
+                assertTrue(expectedException.isInstance(p.getException()));
+                assertTrue(p.getException().getMessage().contains(partOfMessage));
+            });
         }
     }
 
@@ -365,9 +366,7 @@ class DefaultGraphBuilderTest {
 
         Result<ProjectDependencyGraph> result = graphBuilder.build(session);
 
-        assertThat(result.hasErrors())
-                .withFailMessage("Expected result not to have errors")
-                .isFalse();
+        assertFalse(result.hasErrors(), "Expected result not to have errors");
         List<MavenProject> actualReactorProjects = result.get().getSortedProjects();
         assertEquals(2, actualReactorProjects.size());
         assertEquals("pom", actualReactorProjects.get(1).getPackaging());

@@ -25,8 +25,11 @@ import javax.inject.Singleton;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Supplier;
 
 import org.apache.maven.api.Project;
+import org.apache.maven.api.Service;
 import org.apache.maven.api.services.MavenException;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.execution.MojoExecutionEvent;
@@ -81,6 +84,7 @@ public class DefaultBuildPluginManager implements BuildPluginManager {
      * @throws PluginResolutionException The plugin could be found but could not be resolved.
      * @throws InvalidPluginDescriptorException
      */
+    @Override
     public PluginDescriptor loadPlugin(
             Plugin plugin, List<RemoteRepository> repositories, RepositorySystemSession session)
             throws PluginNotFoundException, PluginResolutionException, PluginDescriptorParsingException,
@@ -92,6 +96,7 @@ public class DefaultBuildPluginManager implements BuildPluginManager {
     // Mojo execution
     // ----------------------------------------------------------------------
 
+    @Override
     public void executeMojo(MavenSession session, MojoExecution mojoExecution)
             throws MojoFailureException, MojoExecutionException, PluginConfigurationException, PluginManagerException {
         MavenProject project = session.getCurrentProject();
@@ -126,6 +131,10 @@ public class DefaultBuildPluginManager implements BuildPluginManager {
             scope.seed(org.apache.maven.api.MojoExecution.class, new DefaultMojoExecution(sessionV4, mojoExecution));
 
             if (mojoDescriptor.isV4Api()) {
+                // For Maven 4 plugins, register a service so that they can be directly injected into plugins
+                Map<Class<? extends Service>, Supplier<? extends Service>> services = sessionV4.getAllServices();
+                services.forEach((itf, svc) -> scope.seed((Class<Service>) itf, (Supplier<Service>) svc));
+
                 org.apache.maven.api.plugin.Mojo mojoV4 = mavenPluginManager.getConfiguredMojo(
                         org.apache.maven.api.plugin.Mojo.class, session, mojoExecution);
                 mojo = new MojoWrapper(mojoV4);
@@ -201,6 +210,7 @@ public class DefaultBuildPluginManager implements BuildPluginManager {
      *      call, which is not nice.
      * @throws PluginResolutionException
      */
+    @Override
     public ClassRealm getPluginRealm(MavenSession session, PluginDescriptor pluginDescriptor)
             throws PluginResolutionException, PluginManagerException {
         ClassRealm pluginRealm = pluginDescriptor.getClassRealm();
@@ -213,6 +223,7 @@ public class DefaultBuildPluginManager implements BuildPluginManager {
         return pluginDescriptor.getClassRealm();
     }
 
+    @Override
     public MojoDescriptor getMojoDescriptor(
             Plugin plugin, String goal, List<RemoteRepository> repositories, RepositorySystemSession session)
             throws PluginNotFoundException, PluginResolutionException, PluginDescriptorParsingException,
@@ -228,8 +239,14 @@ public class DefaultBuildPluginManager implements BuildPluginManager {
         }
 
         @Override
-        public void execute() {
-            mojoV4.execute();
+        public void execute() throws MojoExecutionException {
+            try {
+                mojoV4.execute();
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new MojoExecutionException(e);
+            }
         }
 
         @Override

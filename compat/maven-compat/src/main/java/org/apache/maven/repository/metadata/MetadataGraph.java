@@ -128,9 +128,7 @@ public class MetadataGraph {
         }
 
         MetadataGraphVertex vertex = new MetadataGraphVertex(node.md, versionedVertices, scopedVertices);
-        if (!vertices.contains(vertex)) {
-            vertices.add(vertex);
-        }
+        vertices.add(vertex);
 
         if (parentVertex != null) // then create the edge
         {
@@ -154,7 +152,7 @@ public class MetadataGraph {
     }
     // ------------------------------------------------------------------------
     public MetadataGraphVertex findVertex(ArtifactMetadata md) {
-        if (md == null || vertices == null || vertices.size() < 1) {
+        if (md == null || vertices == null || vertices.isEmpty()) {
             return null;
         }
 

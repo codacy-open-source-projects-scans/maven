@@ -20,16 +20,19 @@ package org.apache.maven.cling.executor.forked;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
-import java.util.function.Consumer;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.apache.maven.api.annotations.Nullable;
 import org.apache.maven.api.cli.Executor;
 import org.apache.maven.api.cli.ExecutorException;
 import org.apache.maven.api.cli.ExecutorRequest;
@@ -42,17 +45,35 @@ import static org.apache.maven.api.cli.ExecutorRequest.getCanonicalPath;
  * but provides the best isolation.
  */
 public class ForkedMavenExecutor implements Executor {
+    protected final boolean useMavenArgsEnv;
+    protected final AtomicBoolean closed;
+
+    public ForkedMavenExecutor() {
+        this(true);
+    }
+
+    public ForkedMavenExecutor(boolean useMavenArgsEnv) {
+        this.useMavenArgsEnv = useMavenArgsEnv;
+        this.closed = new AtomicBoolean(false);
+    }
+
     @Override
     public int execute(ExecutorRequest executorRequest) throws ExecutorException {
         requireNonNull(executorRequest);
+        if (closed.get()) {
+            throw new ExecutorException("Executor is closed");
+        }
         validate(executorRequest);
 
-        return doExecute(executorRequest, wrapStdouterrConsumer(executorRequest));
+        return doExecute(executorRequest);
     }
 
     @Override
     public String mavenVersion(ExecutorRequest executorRequest) throws ExecutorException {
         requireNonNull(executorRequest);
+        if (closed.get()) {
+            throw new ExecutorException("Executor is closed");
+        }
         validate(executorRequest);
         try {
             Path cwd = Files.createTempDirectory("forked-executor-maven-version");
@@ -61,7 +82,7 @@ public class ForkedMavenExecutor implements Executor {
                 int exitCode = execute(executorRequest.toBuilder()
                         .cwd(cwd)
                         .arguments(List.of("--version", "--quiet"))
-                        .stdoutConsumer(stdout)
+                        .stdOut(stdout)
                         .build());
                 if (exitCode == 0) {
                     if (stdout.size() > 0) {
@@ -85,37 +106,20 @@ public class ForkedMavenExecutor implements Executor {
 
     protected void validate(ExecutorRequest executorRequest) throws ExecutorException {}
 
-    @Nullable
-    protected Consumer<Process> wrapStdouterrConsumer(ExecutorRequest executorRequest) {
-        if (executorRequest.stdoutConsumer().isEmpty()
-                && executorRequest.stderrConsumer().isEmpty()) {
-            return null;
-        } else {
-            return p -> {
-                try {
-                    if (executorRequest.stdoutConsumer().isPresent()) {
-                        p.getInputStream()
-                                .transferTo(executorRequest.stdoutConsumer().get());
-                    }
-                    if (executorRequest.stderrConsumer().isPresent()) {
-                        p.getErrorStream()
-                                .transferTo(executorRequest.stderrConsumer().get());
-                    }
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            };
-        }
-    }
-
-    protected int doExecute(ExecutorRequest executorRequest, Consumer<Process> processConsumer)
-            throws ExecutorException {
+    protected int doExecute(ExecutorRequest executorRequest) throws ExecutorException {
         ArrayList<String> cmdAndArguments = new ArrayList<>();
         cmdAndArguments.add(executorRequest
                 .installationDirectory()
                 .resolve("bin")
                 .resolve(IS_WINDOWS ? executorRequest.command() + ".cmd" : executorRequest.command())
                 .toString());
+
+        String mavenArgsEnv = System.getenv("MAVEN_ARGS");
+        if (useMavenArgsEnv && mavenArgsEnv != null && !mavenArgsEnv.isEmpty()) {
+            Arrays.stream(mavenArgsEnv.split(" "))
+                    .filter(s -> !s.trim().isEmpty())
+                    .forEach(cmdAndArguments::add);
+        }
 
         cmdAndArguments.addAll(executorRequest.arguments());
 
@@ -144,6 +148,11 @@ public class ForkedMavenExecutor implements Executor {
             mavenOpts += String.join(" ", jvmArgs);
             env.put("MAVEN_OPTS", mavenOpts);
         }
+        env.remove("MAVEN_ARGS"); // we already used it if configured to do so
+
+        if (executorRequest.skipMavenRc()) {
+            env.put("MAVEN_SKIP_RC", "true");
+        }
 
         try {
             ProcessBuilder pb = new ProcessBuilder()
@@ -154,14 +163,64 @@ public class ForkedMavenExecutor implements Executor {
             }
 
             Process process = pb.start();
-            if (processConsumer != null) {
-                processConsumer.accept(process);
-            }
+            pump(process, executorRequest).await();
             return process.waitFor();
         } catch (IOException e) {
             throw new ExecutorException("IO problem while executing command: " + cmdAndArguments, e);
         } catch (InterruptedException e) {
             throw new ExecutorException("Interrupted while executing command: " + cmdAndArguments, e);
+        }
+    }
+
+    protected CountDownLatch pump(Process p, ExecutorRequest executorRequest) {
+        CountDownLatch latch = new CountDownLatch(3);
+        String suffix = "-pump-" + p.pid();
+        Thread stdoutPump = new Thread(() -> {
+            try {
+                OutputStream stdout = executorRequest.stdOut().orElse(OutputStream.nullOutputStream());
+                p.getInputStream().transferTo(stdout);
+                stdout.flush();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            } finally {
+                latch.countDown();
+            }
+        });
+        stdoutPump.setName("stdout" + suffix);
+        stdoutPump.start();
+        Thread stderrPump = new Thread(() -> {
+            try {
+                OutputStream stderr = executorRequest.stdErr().orElse(OutputStream.nullOutputStream());
+                p.getErrorStream().transferTo(stderr);
+                stderr.flush();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            } finally {
+                latch.countDown();
+            }
+        });
+        stderrPump.setName("stderr" + suffix);
+        stderrPump.start();
+        Thread stdinPump = new Thread(() -> {
+            try {
+                OutputStream in = p.getOutputStream();
+                executorRequest.stdIn().orElse(InputStream.nullInputStream()).transferTo(in);
+                in.flush();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            } finally {
+                latch.countDown();
+            }
+        });
+        stdinPump.setName("stdin" + suffix);
+        stdinPump.start();
+        return latch;
+    }
+
+    @Override
+    public void close() throws ExecutorException {
+        if (closed.compareAndExchange(false, true)) {
+            // nothing yet
         }
     }
 }

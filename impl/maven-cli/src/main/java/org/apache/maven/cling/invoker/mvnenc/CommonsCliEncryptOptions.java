@@ -18,10 +18,7 @@
  */
 package org.apache.maven.cling.invoker.mvnenc;
 
-import java.util.Collection;
 import java.util.List;
-import java.util.ListIterator;
-import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -32,10 +29,6 @@ import org.apache.maven.api.cli.Options;
 import org.apache.maven.api.cli.ParserRequest;
 import org.apache.maven.api.cli.mvnenc.EncryptOptions;
 import org.apache.maven.cling.invoker.CommonsCliOptions;
-import org.codehaus.plexus.interpolation.BasicInterpolator;
-import org.codehaus.plexus.interpolation.InterpolationException;
-
-import static org.apache.maven.cling.invoker.Utils.createInterpolator;
 
 /**
  * Implementation of {@link EncryptOptions} (base + mvnenc).
@@ -48,32 +41,6 @@ public class CommonsCliEncryptOptions extends CommonsCliOptions implements Encry
 
     protected CommonsCliEncryptOptions(String source, CLIManager cliManager, CommandLine commandLine) {
         super(source, cliManager, commandLine);
-    }
-
-    private static CommonsCliEncryptOptions interpolate(
-            CommonsCliEncryptOptions options, Collection<Map<String, String>> properties) {
-        try {
-            // now that we have properties, interpolate all arguments
-            BasicInterpolator interpolator = createInterpolator(properties);
-            CommandLine.Builder commandLineBuilder = new CommandLine.Builder();
-            commandLineBuilder.setDeprecatedHandler(o -> {});
-            for (Option option : options.commandLine.getOptions()) {
-                if (!CLIManager.USER_PROPERTY.equals(option.getOpt())) {
-                    List<String> values = option.getValuesList();
-                    for (ListIterator<String> it = values.listIterator(); it.hasNext(); ) {
-                        it.set(interpolator.interpolate(it.next()));
-                    }
-                }
-                commandLineBuilder.addOption(option);
-            }
-            for (String arg : options.commandLine.getArgList()) {
-                commandLineBuilder.addArg(interpolator.interpolate(arg));
-            }
-            return new CommonsCliEncryptOptions(
-                    options.source, (CLIManager) options.cliManager, commandLineBuilder.build());
-        } catch (InterpolationException e) {
-            throw new IllegalArgumentException("Could not interpolate CommonsCliOptions", e);
-        }
     }
 
     @Override
@@ -101,11 +68,6 @@ public class CommonsCliEncryptOptions extends CommonsCliOptions implements Encry
     }
 
     @Override
-    public EncryptOptions interpolate(Collection<Map<String, String>> properties) {
-        return interpolate(this, properties);
-    }
-
-    @Override
     public void displayHelp(ParserRequest request, Consumer<String> printStream) {
         super.displayHelp(request, printStream);
         printStream.accept("");
@@ -118,6 +80,12 @@ public class CommonsCliEncryptOptions extends CommonsCliOptions implements Encry
         printStream.accept("");
     }
 
+    @Override
+    protected CommonsCliEncryptOptions copy(
+            String source, CommonsCliOptions.CLIManager cliManager, CommandLine commandLine) {
+        return new CommonsCliEncryptOptions(source, (CLIManager) cliManager, commandLine);
+    }
+
     protected static class CLIManager extends CommonsCliOptions.CLIManager {
         public static final String FORCE = "f";
         public static final String YES = "y";
@@ -128,11 +96,11 @@ public class CommonsCliEncryptOptions extends CommonsCliOptions implements Encry
             options.addOption(Option.builder(FORCE)
                     .longOpt("force")
                     .desc("Should overwrite without asking any configuration?")
-                    .build());
+                    .get());
             options.addOption(Option.builder(YES)
                     .longOpt("yes")
                     .desc("Should imply user answered \"yes\" to all incoming questions?")
-                    .build());
+                    .get());
         }
     }
 }

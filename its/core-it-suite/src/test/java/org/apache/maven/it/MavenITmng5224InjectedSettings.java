@@ -36,10 +36,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  *
  */
-public class MavenITmng5224InjectedSettings extends AbstractMavenIntegrationTestCase {
-    public MavenITmng5224InjectedSettings() {
+class MavenITmng5224InjectedSettings extends AbstractMavenIntegrationTestCase {
+    MavenITmng5224InjectedSettings() {
         // olamy probably doesn't work with 3.x before 3.0.4
-        super("[2.0.3,3.0-alpha-1),[3.0.4,)");
+        super();
     }
 
     /**
@@ -47,10 +47,19 @@ public class MavenITmng5224InjectedSettings extends AbstractMavenIntegrationTest
      * @throws Exception in case of failure
      */
     @Test
-    public void testmng5224_ReadSettings() throws Exception {
+    public void testmng5224ReadSettings() throws Exception {
         File testDir = extractResources("/mng-5224");
 
-        Verifier verifier = newVerifier(testDir.getAbsolutePath());
+        // First, build the test plugin
+        Verifier verifier = newVerifier(new File(testDir, "maven-it-plugin-settings").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Then, run the test project that uses the plugin
+        verifier = newVerifier(testDir.getAbsolutePath());
 
         verifier.addCliArgument("--settings");
         verifier.addCliArgument("settings.xml");
@@ -134,12 +143,7 @@ public class MavenITmng5224InjectedSettings extends AbstractMavenIntegrationTest
 
         // with maven3 profile activation (activeByDefault) is done later during project building phase
         // so we have only a "dump" of the settings
-
-        if (matchesVersionRange("[2.0.3,3.0-alpha-1)")) {
-            assertEquals(2, activeProfilesNode.getChildCount());
-        } else {
-            assertEquals(1, activeProfilesNode.getChildCount());
-        }
+        assertEquals(1, activeProfilesNode.getChildCount());
 
         List<String> activeProfiles = new ArrayList<>(2);
 
@@ -147,9 +151,6 @@ public class MavenITmng5224InjectedSettings extends AbstractMavenIntegrationTest
             activeProfiles.add(node.getValue());
         }
 
-        if (matchesVersionRange("[2.0.3,3.0-alpha-1)")) {
-            assertTrue(activeProfiles.contains("apache"));
-        }
         assertTrue(activeProfiles.contains("it-defaults"));
     }
 }

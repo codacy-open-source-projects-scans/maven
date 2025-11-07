@@ -31,9 +31,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * @author gboue
  */
 public class MavenITmng6240PluginExtensionAetherProvider extends AbstractMavenIntegrationTestCase {
-    public MavenITmng6240PluginExtensionAetherProvider() {
-        super("[3.5.1,)");
-    }
 
     /**
      * <p>
@@ -54,13 +51,13 @@ public class MavenITmng6240PluginExtensionAetherProvider extends AbstractMavenIn
         File projectDir = new File(testDir, "project");
 
         Verifier verifier = newVerifier(pluginDir.getAbsolutePath());
-        verifier.setEnvironmentVariable("CI", "false");
+        verifier.removeCIEnvironmentVariables();
         verifier.addCliArgument("install");
         verifier.execute();
         verifier.verifyErrorFreeLog();
 
         verifier = newVerifier(projectDir.getAbsolutePath());
-        verifier.setEnvironmentVariable("CI", "false");
+        verifier.removeCIEnvironmentVariables();
         verifier.addCliArgument("deploy");
         verifier.execute();
         verifier.verifyErrorFreeLog();

@@ -20,6 +20,7 @@ package org.apache.maven.api.services;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 import java.util.Optional;
 
 import org.apache.maven.api.ProtoSession;
@@ -28,16 +29,14 @@ import org.apache.maven.api.annotations.Nonnull;
 import org.apache.maven.api.annotations.NotThreadSafe;
 import org.apache.maven.api.annotations.Nullable;
 
-import static org.apache.maven.api.services.BaseRequest.nonNull;
+import static java.util.Objects.requireNonNull;
 
 /**
  *
  * @since 4.0.0
  */
 @Experimental
-public interface ToolchainsBuilderRequest {
-    @Nonnull
-    ProtoSession getSession();
+public interface ToolchainsBuilderRequest extends Request<ProtoSession> {
 
     /**
      * Gets the installation Toolchains source.
@@ -61,7 +60,7 @@ public interface ToolchainsBuilderRequest {
             @Nullable Source installationToolchainsFile,
             @Nullable Source userToolchainsSource) {
         return builder()
-                .session(nonNull(session, "session cannot be null"))
+                .session(requireNonNull(session, "session cannot be null"))
                 .installationToolchainsSource(installationToolchainsFile)
                 .userToolchainsSource(userToolchainsSource)
                 .build();
@@ -73,14 +72,14 @@ public interface ToolchainsBuilderRequest {
             @Nullable Path installationToolchainsFile,
             @Nullable Path userToolchainsPath) {
         return builder()
-                .session(nonNull(session, "session cannot be null"))
+                .session(requireNonNull(session, "session cannot be null"))
                 .installationToolchainsSource(
                         installationToolchainsFile != null && Files.exists(installationToolchainsFile)
-                                ? Source.fromPath(installationToolchainsFile)
+                                ? Sources.fromPath(installationToolchainsFile)
                                 : null)
                 .userToolchainsSource(
                         userToolchainsPath != null && Files.exists(userToolchainsPath)
-                                ? Source.fromPath(userToolchainsPath)
+                                ? Sources.fromPath(userToolchainsPath)
                                 : null)
                 .build();
     }
@@ -93,11 +92,17 @@ public interface ToolchainsBuilderRequest {
     @NotThreadSafe
     class ToolchainsBuilderRequestBuilder {
         ProtoSession session;
+        RequestTrace trace;
         Source installationToolchainsSource;
         Source userToolchainsSource;
 
         public ToolchainsBuilderRequestBuilder session(ProtoSession session) {
             this.session = session;
+            return this;
+        }
+
+        public ToolchainsBuilderRequestBuilder trace(RequestTrace trace) {
+            this.trace = trace;
             return this;
         }
 
@@ -113,7 +118,7 @@ public interface ToolchainsBuilderRequest {
 
         public ToolchainsBuilderRequest build() {
             return new ToolchainsBuilderRequestBuilder.DefaultToolchainsBuilderRequest(
-                    session, installationToolchainsSource, userToolchainsSource);
+                    session, trace, installationToolchainsSource, userToolchainsSource);
         }
 
         private static class DefaultToolchainsBuilderRequest extends BaseRequest<ProtoSession>
@@ -124,9 +129,10 @@ public interface ToolchainsBuilderRequest {
             @SuppressWarnings("checkstyle:ParameterNumber")
             DefaultToolchainsBuilderRequest(
                     @Nonnull ProtoSession session,
+                    @Nullable RequestTrace trace,
                     @Nullable Source installationToolchainsSource,
                     @Nullable Source userToolchainsSource) {
-                super(session);
+                super(session, trace);
                 this.installationToolchainsSource = installationToolchainsSource;
                 this.userToolchainsSource = userToolchainsSource;
             }
@@ -141,6 +147,25 @@ public interface ToolchainsBuilderRequest {
             @Override
             public Optional<Source> getUserToolchainsSource() {
                 return Optional.ofNullable(userToolchainsSource);
+            }
+
+            @Override
+            public boolean equals(Object o) {
+                return o instanceof DefaultToolchainsBuilderRequest that
+                        && Objects.equals(installationToolchainsSource, that.installationToolchainsSource)
+                        && Objects.equals(userToolchainsSource, that.userToolchainsSource);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(installationToolchainsSource, userToolchainsSource);
+            }
+
+            @Override
+            public String toString() {
+                return "ToolchainsBuilderRequest[" + "installationToolchainsSource="
+                        + installationToolchainsSource + ", userToolchainsSource="
+                        + userToolchainsSource + ']';
             }
         }
     }

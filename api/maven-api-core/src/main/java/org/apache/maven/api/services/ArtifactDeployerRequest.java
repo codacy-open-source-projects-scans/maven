@@ -19,6 +19,8 @@
 package org.apache.maven.api.services;
 
 import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
 
 import org.apache.maven.api.ProducedArtifact;
 import org.apache.maven.api.RemoteRepository;
@@ -26,8 +28,9 @@ import org.apache.maven.api.Session;
 import org.apache.maven.api.annotations.Experimental;
 import org.apache.maven.api.annotations.Immutable;
 import org.apache.maven.api.annotations.Nonnull;
+import org.apache.maven.api.annotations.Nullable;
 
-import static org.apache.maven.api.services.BaseRequest.nonNull;
+import static java.util.Objects.requireNonNull;
 
 /**
  * A request for deploying one or more artifacts to a remote repository.
@@ -36,10 +39,7 @@ import static org.apache.maven.api.services.BaseRequest.nonNull;
  */
 @Experimental
 @Immutable
-public interface ArtifactDeployerRequest {
-
-    @Nonnull
-    Session getSession();
+public interface ArtifactDeployerRequest extends Request<Session> {
 
     @Nonnull
     RemoteRepository getRepository();
@@ -60,14 +60,15 @@ public interface ArtifactDeployerRequest {
             @Nonnull RemoteRepository repository,
             @Nonnull Collection<ProducedArtifact> artifacts) {
         return builder()
-                .session(nonNull(session, "session cannot be null"))
-                .repository(nonNull(repository, "repository cannot be null"))
-                .artifacts(nonNull(artifacts, "artifacts cannot be null"))
+                .session(requireNonNull(session, "session cannot be null"))
+                .repository(requireNonNull(repository, "repository cannot be null"))
+                .artifacts(requireNonNull(artifacts, "artifacts cannot be null"))
                 .build();
     }
 
     class ArtifactDeployerRequestBuilder {
         Session session;
+        RequestTrace trace;
         RemoteRepository repository;
         Collection<ProducedArtifact> artifacts;
         int retryFailedDeploymentCount;
@@ -77,6 +78,12 @@ public interface ArtifactDeployerRequest {
         @Nonnull
         public ArtifactDeployerRequestBuilder session(Session session) {
             this.session = session;
+            return this;
+        }
+
+        @Nonnull
+        public ArtifactDeployerRequestBuilder trace(RequestTrace trace) {
+            this.trace = trace;
             return this;
         }
 
@@ -98,7 +105,8 @@ public interface ArtifactDeployerRequest {
 
         @Nonnull
         public ArtifactDeployerRequest build() {
-            return new DefaultArtifactDeployerRequest(session, repository, artifacts, retryFailedDeploymentCount);
+            return new DefaultArtifactDeployerRequest(
+                    session, trace, repository, artifacts, retryFailedDeploymentCount);
         }
 
         private static class DefaultArtifactDeployerRequest extends BaseRequest<Session>
@@ -110,12 +118,13 @@ public interface ArtifactDeployerRequest {
 
             DefaultArtifactDeployerRequest(
                     @Nonnull Session session,
+                    @Nullable RequestTrace trace,
                     @Nonnull RemoteRepository repository,
                     @Nonnull Collection<ProducedArtifact> artifacts,
                     int retryFailedDeploymentCount) {
-                super(session);
-                this.repository = nonNull(repository, "repository cannot be null");
-                this.artifacts = unmodifiable(nonNull(artifacts, "artifacts cannot be null"));
+                super(session, trace);
+                this.repository = requireNonNull(repository, "repository cannot be null");
+                this.artifacts = List.copyOf(requireNonNull(artifacts, "artifacts cannot be null"));
                 this.retryFailedDeploymentCount = retryFailedDeploymentCount;
             }
 
@@ -134,6 +143,27 @@ public interface ArtifactDeployerRequest {
             @Override
             public int getRetryFailedDeploymentCount() {
                 return retryFailedDeploymentCount;
+            }
+
+            @Override
+            public boolean equals(Object o) {
+                return o instanceof DefaultArtifactDeployerRequest that
+                        && retryFailedDeploymentCount == that.retryFailedDeploymentCount
+                        && Objects.equals(repository, that.repository)
+                        && Objects.equals(artifacts, that.artifacts);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(repository, artifacts, retryFailedDeploymentCount);
+            }
+
+            @Override
+            public String toString() {
+                return "ArtifactDeployerRequest[" + "repository="
+                        + repository + ", artifacts="
+                        + artifacts + ", retryFailedDeploymentCount="
+                        + retryFailedDeploymentCount + ']';
             }
         }
     }

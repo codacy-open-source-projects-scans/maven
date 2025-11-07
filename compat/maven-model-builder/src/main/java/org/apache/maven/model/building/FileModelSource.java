@@ -20,38 +20,30 @@ package org.apache.maven.model.building;
 
 import java.io.File;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 import org.apache.maven.building.FileSource;
-import org.apache.maven.model.locator.ModelLocator;
 
 /**
  * Wraps an ordinary {@link File} as a model source.
  *
- * @deprecated use {@link org.apache.maven.api.services.ModelBuilder} instead
+ * @deprecated use {@code org.apache.maven.api.services.ModelBuilder} instead
  */
 @Deprecated(since = "4.0.0")
-public class FileModelSource extends FileSource implements ModelSource3 {
+public class FileModelSource extends FileSource implements ModelSource2 {
 
     /**
      * Creates a new model source backed by the specified file.
      *
      * @param pomFile The POM file, must not be {@code null}.
-     * @deprecated Use {@link #FileModelSource(Path)} instead.
      */
-    @Deprecated
     public FileModelSource(File pomFile) {
         super(pomFile);
     }
 
-    /**
-     * Creates a new model source backed by the specified file.
-     *
-     * @param pomPath The POM file, must not be {@code null}.
-     * @since 4.0.0
-     */
-    public FileModelSource(Path pomPath) {
-        super(pomPath);
+    public FileModelSource(Path pomFile) {
+        super(pomFile);
     }
 
     /**
@@ -66,14 +58,17 @@ public class FileModelSource extends FileSource implements ModelSource3 {
     }
 
     @Override
-    public ModelSource3 getRelatedSource(ModelLocator locator, String relPath) {
+    public ModelSource2 getRelatedSource(String relPath) {
         relPath = relPath.replace('\\', File.separatorChar).replace('/', File.separatorChar);
 
-        Path path = getPath().getParent().resolve(relPath);
+        Path relatedPom = getPath().getParent().resolve(relPath);
 
-        Path relatedPom = locator.locateExistingPom(path);
+        if (Files.isDirectory(relatedPom)) {
+            // TODO figure out how to reuse ModelLocator.locatePom(File) here
+            relatedPom = relatedPom.resolve("pom.xml");
+        }
 
-        if (relatedPom != null) {
+        if (Files.isRegularFile(relatedPom) && Files.isReadable(relatedPom)) {
             return new FileModelSource(relatedPom.normalize());
         }
 
@@ -82,7 +77,7 @@ public class FileModelSource extends FileSource implements ModelSource3 {
 
     @Override
     public URI getLocationURI() {
-        return getPath().toUri();
+        return getFile().toURI();
     }
 
     @Override
@@ -91,19 +86,15 @@ public class FileModelSource extends FileSource implements ModelSource3 {
             return true;
         }
 
-        if (obj == null) {
-            return false;
-        }
-
-        if (!FileModelSource.class.equals(obj.getClass())) {
+        if (!(obj instanceof FileModelSource)) {
             return false;
         }
         FileModelSource other = (FileModelSource) obj;
-        return getPath().equals(other.getPath());
+        return getFile().equals(other.getFile());
     }
 
     @Override
     public int hashCode() {
-        return getPath().hashCode();
+        return getFile().hashCode();
     }
 }

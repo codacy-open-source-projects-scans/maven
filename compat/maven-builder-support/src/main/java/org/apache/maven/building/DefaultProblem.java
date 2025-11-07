@@ -23,7 +23,9 @@ package org.apache.maven.building;
  * thrown or a simple string message. In addition, a problem carries a hint about its source, e.g. the settings file
  * that exhibits the problem.
  *
+ * @deprecated since 4.0.0, use {@link org.apache.maven.api.services} instead
  */
+@Deprecated(since = "4.0.0")
 class DefaultProblem implements Problem {
 
     private final String source;
@@ -60,37 +62,41 @@ class DefaultProblem implements Problem {
         this.exception = exception;
     }
 
+    @Override
     public String getSource() {
         return source;
     }
 
+    @Override
     public int getLineNumber() {
         return lineNumber;
     }
 
+    @Override
     public int getColumnNumber() {
         return columnNumber;
     }
 
+    @Override
     public String getLocation() {
         StringBuilder buffer = new StringBuilder(256);
 
         if (!getSource().isEmpty()) {
-            if (buffer.length() > 0) {
+            if (!buffer.isEmpty()) {
                 buffer.append(", ");
             }
             buffer.append(getSource());
         }
 
         if (getLineNumber() > 0) {
-            if (buffer.length() > 0) {
+            if (!buffer.isEmpty()) {
                 buffer.append(", ");
             }
             buffer.append("line ").append(getLineNumber());
         }
 
         if (getColumnNumber() > 0) {
-            if (buffer.length() > 0) {
+            if (!buffer.isEmpty()) {
                 buffer.append(", ");
             }
             buffer.append("column ").append(getColumnNumber());
@@ -99,10 +105,12 @@ class DefaultProblem implements Problem {
         return buffer.toString();
     }
 
+    @Override
     public Exception getException() {
         return exception;
     }
 
+    @Override
     public String getMessage() {
         String msg;
 
@@ -119,6 +127,7 @@ class DefaultProblem implements Problem {
         return msg;
     }
 
+    @Override
     public Severity getSeverity() {
         return severity;
     }

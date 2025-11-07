@@ -208,7 +208,7 @@ public interface XmlReaderRequest {
 
             @Override
             public URL getURL() {
-                return null;
+                return url;
             }
 
             @Override
@@ -216,6 +216,7 @@ public interface XmlReaderRequest {
                 return inputStream;
             }
 
+            @Override
             public Reader getReader() {
                 return reader;
             }

@@ -18,8 +18,6 @@
  */
 package org.apache.maven.cling.invoker;
 
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -27,30 +25,32 @@ import java.util.Optional;
 
 import org.apache.maven.api.annotations.Nonnull;
 import org.apache.maven.api.annotations.Nullable;
+import org.apache.maven.api.cli.CoreExtensions;
 import org.apache.maven.api.cli.InvokerRequest;
+import org.apache.maven.api.cli.Options;
 import org.apache.maven.api.cli.ParserRequest;
-import org.apache.maven.api.cli.extensions.CoreExtension;
+import org.apache.maven.api.cli.cisupport.CIInfo;
 
 import static java.util.Objects.requireNonNull;
 
-public abstract class BaseInvokerRequest implements InvokerRequest {
+public class BaseInvokerRequest implements InvokerRequest {
     private final ParserRequest parserRequest;
+    private final boolean parsingFailed;
     private final Path cwd;
     private final Path installationDirectory;
     private final Path userHomeDirectory;
-    private final List<String> jvmArguments;
     private final Map<String, String> userProperties;
     private final Map<String, String> systemProperties;
     private final Path topDirectory;
     private final Path rootDirectory;
-    private final List<CoreExtension> coreExtensions;
-    private final InputStream in;
-    private final OutputStream out;
-    private final OutputStream err;
+    private final List<CoreExtensions> coreExtensions;
+    private final CIInfo ciInfo;
+    private final Options options;
 
     @SuppressWarnings("ParameterNumber")
     public BaseInvokerRequest(
             @Nonnull ParserRequest parserRequest,
+            boolean parsingFailed,
             @Nonnull Path cwd,
             @Nonnull Path installationDirectory,
             @Nonnull Path userHomeDirectory,
@@ -58,31 +58,32 @@ public abstract class BaseInvokerRequest implements InvokerRequest {
             @Nonnull Map<String, String> systemProperties,
             @Nonnull Path topDirectory,
             @Nullable Path rootDirectory,
-            @Nullable InputStream in,
-            @Nullable OutputStream out,
-            @Nullable OutputStream err,
-            @Nullable List<CoreExtension> coreExtensions,
-            @Nullable List<String> jvmArguments) {
+            @Nullable List<CoreExtensions> coreExtensions,
+            @Nullable CIInfo ciInfo,
+            @Nullable Options options) {
         this.parserRequest = requireNonNull(parserRequest);
+        this.parsingFailed = parsingFailed;
         this.cwd = requireNonNull(cwd);
         this.installationDirectory = requireNonNull(installationDirectory);
         this.userHomeDirectory = requireNonNull(userHomeDirectory);
-        this.jvmArguments = jvmArguments;
 
         this.userProperties = requireNonNull(userProperties);
         this.systemProperties = requireNonNull(systemProperties);
         this.topDirectory = requireNonNull(topDirectory);
         this.rootDirectory = rootDirectory;
         this.coreExtensions = coreExtensions;
-
-        this.in = in;
-        this.out = out;
-        this.err = err;
+        this.ciInfo = ciInfo;
+        this.options = options;
     }
 
     @Override
     public ParserRequest parserRequest() {
         return parserRequest;
+    }
+
+    @Override
+    public boolean parsingFailed() {
+        return parsingFailed;
     }
 
     @Override
@@ -98,11 +99,6 @@ public abstract class BaseInvokerRequest implements InvokerRequest {
     @Override
     public Path userHomeDirectory() {
         return userHomeDirectory;
-    }
-
-    @Override
-    public Optional<List<String>> jvmArguments() {
-        return Optional.ofNullable(jvmArguments);
     }
 
     @Override
@@ -126,22 +122,16 @@ public abstract class BaseInvokerRequest implements InvokerRequest {
     }
 
     @Override
-    public Optional<InputStream> in() {
-        return Optional.ofNullable(in);
-    }
-
-    @Override
-    public Optional<OutputStream> out() {
-        return Optional.ofNullable(out);
-    }
-
-    @Override
-    public Optional<OutputStream> err() {
-        return Optional.ofNullable(err);
-    }
-
-    @Override
-    public Optional<List<CoreExtension>> coreExtensions() {
+    public Optional<List<CoreExtensions>> coreExtensions() {
         return Optional.ofNullable(coreExtensions);
+    }
+
+    @Override
+    public Optional<CIInfo> ciInfo() {
+        return Optional.ofNullable(ciInfo);
+    }
+
+    public Optional<Options> options() {
+        return Optional.ofNullable(options);
     }
 }

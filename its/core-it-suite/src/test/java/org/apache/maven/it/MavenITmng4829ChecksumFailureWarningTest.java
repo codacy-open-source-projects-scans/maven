@@ -32,10 +32,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class MavenITmng4829ChecksumFailureWarningTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng4829ChecksumFailureWarningTest() {
-        super("[2.0.3,3.0-alpha-1)[3.0,)");
-    }
-
     /**
      * Verify that artifacts with mismatching checksums cause a warning on the console.
      *
@@ -51,7 +47,7 @@ public class MavenITmng4829ChecksumFailureWarningTest extends AbstractMavenInteg
         verifier.deleteArtifacts("org.apache.maven.its.mng4829");
         verifier.addCliArgument("-s");
         verifier.addCliArgument("settings.xml");
-        verifier.setEnvironmentVariable("CI", "false");
+        verifier.removeCIEnvironmentVariables();
         verifier.filterFile("settings-template.xml", "settings.xml");
         verifier.addCliArgument("validate");
         verifier.execute();

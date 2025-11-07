@@ -18,14 +18,14 @@
  */
 package org.apache.maven.model.inheritance;
 
-import org.apache.maven.api.model.Model;
+import org.apache.maven.model.Model;
 import org.apache.maven.model.building.ModelBuildingRequest;
 import org.apache.maven.model.building.ModelProblemCollector;
 
 /**
  * Handles inheritance of model values.
  *
- * @deprecated use {@link org.apache.maven.api.services.ModelBuilder} instead
+ * @deprecated use {@code org.apache.maven.api.services.ModelBuilder} instead
  */
 @Deprecated(since = "4.0.0")
 public interface InheritanceAssembler {
@@ -41,6 +41,6 @@ public interface InheritanceAssembler {
      * @param request The model building request that holds further settings, must not be {@code null}.
      * @param problems The container used to collect problems that were encountered, must not be {@code null}.
      */
-    Model assembleModelInheritance(
+    void assembleModelInheritance(
             Model child, Model parent, ModelBuildingRequest request, ModelProblemCollector problems);
 }

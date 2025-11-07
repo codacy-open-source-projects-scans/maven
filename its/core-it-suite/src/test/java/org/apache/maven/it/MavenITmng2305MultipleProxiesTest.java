@@ -49,10 +49,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class MavenITmng2305MultipleProxiesTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng2305MultipleProxiesTest() {
-        super("[3.0-alpha-3,)");
-    }
-
     /**
      * Verify that proxies can be setup for multiple protocols, in this case HTTP and HTTPS. As a nice side effect,
      * this checks HTTPS tunneling over a web proxy.
@@ -147,7 +143,7 @@ public class MavenITmng2305MultipleProxiesTest extends AbstractMavenIntegrationT
                 // HTTP connector serves only http-0.1.jar and HTTPS connector serves only https-0.1.jar
                 response.setStatus(HttpServletResponse.SC_NOT_FOUND);
             } else if (uri.endsWith(".pom")) {
-                writer.println("<project>");
+                writer.println("<project xmlns=\"http://maven.apache.org/POM/4.0.0\">");
                 writer.println("  <modelVersion>4.0.0</modelVersion>");
                 writer.println("  <groupId>org.apache.maven.its.mng2305</groupId>");
                 writer.println("  <artifactId>" + request.getScheme() + "</artifactId>");

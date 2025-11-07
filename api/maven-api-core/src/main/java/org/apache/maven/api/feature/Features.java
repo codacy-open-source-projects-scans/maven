@@ -19,7 +19,6 @@
 package org.apache.maven.api.feature;
 
 import java.util.Map;
-import java.util.Properties;
 
 import org.apache.maven.api.Constants;
 import org.apache.maven.api.annotations.Nullable;
@@ -35,21 +34,31 @@ public final class Features {
     private Features() {}
 
     /**
-     * Check if the consumer POM feature is active.
+     * Check if the personality is "maven3".
      */
-    public static boolean consumerPom(@Nullable Properties userProperties) {
-        return doGet(userProperties, Constants.MAVEN_CONSUMER_POM, true);
+    public static boolean mavenMaven3Personality(@Nullable Map<String, ?> userProperties) {
+        return doGet(userProperties, Constants.MAVEN_MAVEN3_PERSONALITY, false);
     }
 
     /**
      * Check if the consumer POM feature is active.
      */
-    public static boolean consumerPom(@Nullable Map<String, String> userProperties, boolean def) {
-        return doGet(userProperties, Constants.MAVEN_CONSUMER_POM, def);
+    public static boolean consumerPom(@Nullable Map<String, ?> userProperties) {
+        return doGet(userProperties, Constants.MAVEN_CONSUMER_POM, !mavenMaven3Personality(userProperties));
     }
 
-    private static boolean doGet(Properties userProperties, String key, boolean def) {
-        return doGet(userProperties != null ? userProperties.get(key) : null, def);
+    /**
+     * Check if consumer POM flattening is enabled.
+     */
+    public static boolean consumerPomFlatten(@Nullable Map<String, ?> userProperties) {
+        return doGet(userProperties, Constants.MAVEN_CONSUMER_POM_FLATTEN, false);
+    }
+
+    /**
+     * Check if build POM deployment is enabled.
+     */
+    public static boolean deployBuildPom(@Nullable Map<String, ?> userProperties) {
+        return doGet(userProperties, Constants.MAVEN_DEPLOY_BUILD_POM, true);
     }
 
     private static boolean doGet(Map<String, ?> userProperties, String key, boolean def) {
@@ -57,8 +66,8 @@ public final class Features {
     }
 
     private static boolean doGet(Object val, boolean def) {
-        if (val instanceof Boolean) {
-            return (Boolean) val;
+        if (val instanceof Boolean bool) {
+            return bool;
         } else if (val != null) {
             return Boolean.parseBoolean(val.toString());
         } else {

@@ -31,7 +31,7 @@ import org.apache.maven.api.model.Profile;
  * @since 4.0.0
  */
 @Experimental
-public interface ModelBuilderResult {
+public interface ModelBuilderResult extends Result<ModelBuilderRequest> {
 
     /**
      * Gets the source from which the model was read.
@@ -91,12 +91,12 @@ public interface ModelBuilderResult {
     List<Profile> getActiveExternalProfiles();
 
     /**
-     * Gets the problems that were encountered during the project building.
+     * Gets the problem collector that collected problems encountered during the project building.
      *
-     * @return the problems that were encountered during the project building, can be empty but never {@code null}
+     * @return the problem collector that collected problems encountered during the project building
      */
     @Nonnull
-    List<ModelProblem> getProblems();
+    ProblemCollector<ModelProblem> getProblemCollector();
 
     /**
      * Gets the children of this result.
@@ -109,5 +109,6 @@ public interface ModelBuilderResult {
     /**
      * Creates a human-readable representation of these errors.
      */
+    @Override
     String toString();
 }

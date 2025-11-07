@@ -90,8 +90,8 @@ public class LoggingOutputStream extends FilterOutputStream {
     }
 
     public static void forceFlush(PrintStream ps) {
-        if (ps instanceof LoggingPrintStream) {
-            ((LoggingPrintStream) ps).forceFlush();
+        if (ps instanceof LoggingPrintStream loggingPrintStream) {
+            loggingPrintStream.forceFlush();
         }
     }
 }

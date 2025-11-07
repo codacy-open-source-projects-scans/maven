@@ -24,8 +24,8 @@ import javax.inject.Provider;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,6 +52,8 @@ import org.codehaus.plexus.PlexusContainer;
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.eclipse.sisu.BeanEntry;
 import org.eclipse.sisu.inject.BeanLocator;
+
+import static org.apache.maven.di.impl.Binding.getPriorityComparator;
 
 @Named
 public class SisuDiBridgeModule extends AbstractModule {
@@ -126,7 +128,7 @@ public class SisuDiBridgeModule extends AbstractModule {
             } else if (key.getQualifier() instanceof Annotation a) {
                 return (com.google.inject.Key<U>) com.google.inject.Key.get(key.getType(), a);
             } else {
-                return (com.google.inject.Key<U>) com.google.inject.Key.get(key.getType());
+                return (com.google.inject.Key<U>) com.google.inject.Key.get(key.getType(), Named.class);
             }
         }
 
@@ -181,11 +183,11 @@ public class SisuDiBridgeModule extends AbstractModule {
             // Add Plexus bindings
             for (var bean : locator.get().locate(toGuiceKey(key))) {
                 if (isPlexusBean(bean)) {
-                    list.add(new BindingToBeanEntry<>(key).toBeanEntry(bean));
+                    list.add(new BindingToBeanEntry<>(key).toBeanEntry(bean).prioritize(bean.getRank()));
                 }
             }
             if (!list.isEmpty()) {
-                list.sort(getBindingComparator());
+                list.sort(getPriorityComparator());
                 //noinspection unchecked
                 return () -> (Q) getInstance(list.iterator().next());
             } else if (dep.optional()) {
@@ -202,6 +204,22 @@ public class SisuDiBridgeModule extends AbstractModule {
             }
         }
 
+        @Override
+        public <T> Set<Binding<T>> getAllBindings(Class<T> clazz) {
+            Key<T> key = Key.of(clazz);
+            Set<Binding<T>> bindings = new HashSet<>();
+            Set<Binding<T>> diBindings = super.getBindings(key);
+            if (diBindings != null) {
+                bindings.addAll(diBindings);
+            }
+            for (var bean : locator.get().locate(toGuiceKey(key))) {
+                if (isPlexusBean(bean)) {
+                    bindings.add(new BindingToBeanEntry<>(Key.of(bean.getImplementationClass())).toBeanEntry(bean));
+                }
+            }
+            return bindings;
+        }
+
         private <Q> Supplier<Q> getListSupplier(Key<Q> key) {
             Key<Object> elementType = key.getTypeParameter(0);
             return () -> {
@@ -215,7 +233,7 @@ public class SisuDiBridgeModule extends AbstractModule {
                     }
                 }
                 //noinspection unchecked
-                return (Q) list(list.stream().sorted(getBindingComparator()).toList(), this::getInstance);
+                return (Q) list(list.stream().sorted(getPriorityComparator()).toList(), this::getInstance);
             };
         }
 
@@ -226,7 +244,7 @@ public class SisuDiBridgeModule extends AbstractModule {
                 throw new DIException("Only String keys are supported for maps: " + key);
             }
             return () -> {
-                var comparator = getBindingComparator();
+                var comparator = getPriorityComparator();
                 Map<String, Binding<?>> map = new HashMap<>();
                 for (Binding<?> b : getBindings().getOrDefault(valueType, Set.of())) {
                     String name =
@@ -251,11 +269,6 @@ public class SisuDiBridgeModule extends AbstractModule {
 
         private <Q> Q getInstance(Binding<Q> binding) {
             return compile(binding).get();
-        }
-
-        private static Comparator<Binding<?>> getBindingComparator() {
-            Comparator<Binding<?>> comparing = Comparator.comparing(Binding::getPriority);
-            return comparing.reversed();
         }
 
         private <T> boolean isPlexusBean(BeanEntry<Annotation, T> entry) {

@@ -24,13 +24,14 @@ import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
-import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
 import org.apache.maven.RepositoryUtils;
 import org.apache.maven.api.Service;
 import org.apache.maven.api.Session;
 import org.apache.maven.api.annotations.Nullable;
+import org.apache.maven.api.cache.RequestCacheFactory;
 import org.apache.maven.api.cli.extensions.CoreExtension;
 import org.apache.maven.api.di.Inject;
 import org.apache.maven.api.di.Named;
@@ -43,21 +44,23 @@ import org.apache.maven.api.services.InterpolatorException;
 import org.apache.maven.api.services.RepositoryFactory;
 import org.apache.maven.api.services.VersionParser;
 import org.apache.maven.api.services.VersionRangeResolver;
+import org.apache.maven.cling.invoker.ProtoLookup;
 import org.apache.maven.execution.DefaultMavenExecutionResult;
 import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.extension.internal.CoreExports;
 import org.apache.maven.extension.internal.CoreExtensionEntry;
-import org.apache.maven.internal.impl.DefaultArtifactCoordinatesFactory;
+import org.apache.maven.impl.DefaultArtifactCoordinatesFactory;
+import org.apache.maven.impl.DefaultArtifactResolver;
+import org.apache.maven.impl.DefaultModelVersionParser;
+import org.apache.maven.impl.DefaultRepositoryFactory;
+import org.apache.maven.impl.DefaultVersionParser;
+import org.apache.maven.impl.DefaultVersionRangeResolver;
+import org.apache.maven.impl.InternalSession;
+import org.apache.maven.impl.cache.DefaultRequestCacheFactory;
+import org.apache.maven.impl.model.DefaultInterpolator;
 import org.apache.maven.internal.impl.DefaultArtifactManager;
-import org.apache.maven.internal.impl.DefaultArtifactResolver;
-import org.apache.maven.internal.impl.DefaultModelVersionParser;
-import org.apache.maven.internal.impl.DefaultRepositoryFactory;
 import org.apache.maven.internal.impl.DefaultSession;
-import org.apache.maven.internal.impl.DefaultVersionParser;
-import org.apache.maven.internal.impl.DefaultVersionRangeResolver;
-import org.apache.maven.internal.impl.InternalSession;
-import org.apache.maven.internal.impl.model.DefaultInterpolator;
 import org.apache.maven.plugin.PluginResolutionException;
 import org.apache.maven.plugin.internal.DefaultPluginDependenciesResolver;
 import org.apache.maven.resolver.MavenChainedWorkspaceReader;
@@ -108,6 +111,8 @@ public class BootstrapCoreExtensionManager {
 
     private final RepositorySystem repoSystem;
 
+    private final Interpolator interpolator;
+
     @Inject
     public BootstrapCoreExtensionManager(
             DefaultPluginDependenciesResolver pluginDependenciesResolver,
@@ -115,7 +120,8 @@ public class BootstrapCoreExtensionManager {
             CoreExports coreExports,
             PlexusContainer container,
             @Nullable @Named("ide") WorkspaceReader ideWorkspaceReader,
-            RepositorySystem repoSystem) {
+            RepositorySystem repoSystem,
+            Interpolator interpolator) {
         this.pluginDependenciesResolver = pluginDependenciesResolver;
         this.repositorySystemSessionFactory = repositorySystemSessionFactory;
         this.coreExports = coreExports;
@@ -123,9 +129,10 @@ public class BootstrapCoreExtensionManager {
         this.parentRealm = container.getContainerRealm();
         this.ideWorkspaceReader = ideWorkspaceReader;
         this.repoSystem = repoSystem;
+        this.interpolator = interpolator;
     }
 
-    public List<CoreExtensionEntry> loadCoreExtensions(
+    public List<LoadedCoreExtension> loadCoreExtensions(
             MavenExecutionRequest request, Set<String> providedArtifacts, List<CoreExtension> extensions)
             throws Exception {
         try (CloseableSession repoSession = repositorySystemSessionFactory
@@ -137,20 +144,20 @@ public class BootstrapCoreExtensionManager {
             InternalSession.associate(repoSession, iSession);
 
             List<RemoteRepository> repositories = RepositoryUtils.toRepos(request.getPluginArtifactRepositories());
-            Function<String, String> interpolator = createInterpolator(request);
+            UnaryOperator<String> interpolator = createInterpolator(request);
 
             return resolveCoreExtensions(repoSession, repositories, providedArtifacts, extensions, interpolator);
         }
     }
 
-    private List<CoreExtensionEntry> resolveCoreExtensions(
+    private List<LoadedCoreExtension> resolveCoreExtensions(
             RepositorySystemSession repoSession,
             List<RemoteRepository> repositories,
             Set<String> providedArtifacts,
             List<CoreExtension> configuration,
-            Function<String, String> interpolator)
+            UnaryOperator<String> interpolator)
             throws Exception {
-        List<CoreExtensionEntry> extensions = new ArrayList<>();
+        List<LoadedCoreExtension> extensions = new ArrayList<>();
 
         DependencyFilter dependencyFilter = new ExclusionsDependencyFilter(providedArtifacts);
 
@@ -158,7 +165,7 @@ public class BootstrapCoreExtensionManager {
             List<Artifact> artifacts =
                     resolveExtension(extension, repoSession, repositories, dependencyFilter, interpolator);
             if (!artifacts.isEmpty()) {
-                extensions.add(createExtension(extension, artifacts));
+                extensions.add(new LoadedCoreExtension(extension, createExtension(extension, artifacts)));
             }
         }
 
@@ -206,7 +213,7 @@ public class BootstrapCoreExtensionManager {
             RepositorySystemSession repoSession,
             List<RemoteRepository> repositories,
             DependencyFilter dependencyFilter,
-            Function<String, String> interpolator)
+            UnaryOperator<String> interpolator)
             throws ExtensionResolutionException {
         try {
             /* TODO: Enhance the PluginDependenciesResolver to provide a
@@ -230,9 +237,8 @@ public class BootstrapCoreExtensionManager {
         }
     }
 
-    private static Function<String, String> createInterpolator(MavenExecutionRequest request) {
-        Interpolator interpolator = new DefaultInterpolator();
-        Function<String, String> callback = v -> {
+    private UnaryOperator<String> createInterpolator(MavenExecutionRequest request) {
+        UnaryOperator<String> callback = v -> {
             String r = request.getUserProperties().getProperty(v);
             if (r == null) {
                 r = request.getSystemProperties().getProperty(v);
@@ -247,7 +253,15 @@ public class BootstrapCoreExtensionManager {
                 MavenSession session,
                 RepositorySystem repositorySystem,
                 List<org.apache.maven.api.RemoteRepository> repositories) {
-            super(session, repositorySystem, repositories, null, null, null);
+            super(
+                    session,
+                    repositorySystem,
+                    repositories,
+                    null,
+                    ProtoLookup.builder()
+                            .addMapping(RequestCacheFactory.class, new DefaultRequestCacheFactory())
+                            .build(),
+                    null);
         }
 
         @Override

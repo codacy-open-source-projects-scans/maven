@@ -25,7 +25,7 @@ import org.apache.maven.internal.impl.DefaultLookup;
 import org.codehaus.plexus.DefaultPlexusContainer;
 
 import static java.util.Objects.requireNonNull;
-import static org.apache.maven.cling.invoker.Utils.toPlexusLoggingLevel;
+import static org.apache.maven.cling.invoker.CliUtils.toPlexusLoggingLevel;
 
 /**
  * Container capsule backed by Plexus Container.
@@ -46,10 +46,6 @@ public class PlexusContainerCapsule implements ContainerCapsule {
     @Override
     public void updateLogging(LookupContext context) {
         plexusContainer.getLoggerManager().setThresholds(toPlexusLoggingLevel(context.loggerLevel));
-        org.slf4j.Logger l = context.loggerFactory.getLogger(this.getClass().getName());
-        context.logger = (level, message, error) -> l.atLevel(org.slf4j.event.Level.valueOf(level.name()))
-                .setCause(error)
-                .log(message);
     }
 
     @Override

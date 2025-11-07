@@ -22,7 +22,9 @@ import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.graph.DependencyFilter;
 
 /**
+ * @deprecated use {@code org.apache.maven.api.services.ProjectBuilder} instead
  */
+@Deprecated(since = "4.0.0")
 public class DefaultDependencyResolutionRequest implements DependencyResolutionRequest {
 
     private MavenProject project;
@@ -40,28 +42,34 @@ public class DefaultDependencyResolutionRequest implements DependencyResolutionR
         setRepositorySession(session);
     }
 
+    @Override
     public DependencyFilter getResolutionFilter() {
         return filter;
     }
 
+    @Override
     public MavenProject getMavenProject() {
         return project;
     }
 
+    @Override
     public RepositorySystemSession getRepositorySession() {
         return session;
     }
 
+    @Override
     public DependencyResolutionRequest setResolutionFilter(DependencyFilter filter) {
         this.filter = filter;
         return this;
     }
 
+    @Override
     public DependencyResolutionRequest setMavenProject(MavenProject project) {
         this.project = project;
         return this;
     }
 
+    @Override
     public DependencyResolutionRequest setRepositorySession(RepositorySystemSession repositorySession) {
         this.session = repositorySession;
         return this;

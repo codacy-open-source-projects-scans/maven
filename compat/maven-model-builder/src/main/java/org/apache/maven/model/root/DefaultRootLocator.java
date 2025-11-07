@@ -29,12 +29,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * @deprecated use {@link org.apache.maven.api.services.model.RootLocator} instead
+ * @deprecated use {@code org.apache.maven.api.services.model.RootLocator} instead
  */
 @Named
 @Deprecated(since = "4.0.0")
 public class DefaultRootLocator implements RootLocator {
 
+    @Override
     public boolean isRootDirectory(Path dir) {
         if (Files.isDirectory(dir.resolve(".mvn"))) {
             return true;

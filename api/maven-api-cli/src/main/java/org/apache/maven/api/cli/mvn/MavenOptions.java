@@ -18,9 +18,7 @@
  */
 package org.apache.maven.api.cli.mvn;
 
-import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import org.apache.maven.api.annotations.Experimental;
@@ -209,19 +207,17 @@ public interface MavenOptions extends Options {
     Optional<Boolean> ignoreTransitiveRepositories();
 
     /**
+     * Specifies "@file"-like file, to load up command line from. It may contain goals as well. Format is one parameter
+     * per line (similar to {@code maven.conf}) and {@code '#'} (hash) marked comment lines are allowed. Goals, if
+     * present, are appended, to those specified on CLI input, if any.
+     */
+    Optional<String> atFile();
+
+    /**
      * Returns the list of goals and phases to execute.
      *
      * @return an {@link Optional} containing the list of goals and phases to execute, or empty if not specified
      */
     @Nonnull
     Optional<List<String>> goals();
-
-    /**
-     * Returns a new instance of {@link MavenOptions} with values interpolated using the given properties.
-     *
-     * @param properties a collection of property maps to use for interpolation
-     * @return a new MavenOptions instance with interpolated values
-     */
-    @Nonnull
-    MavenOptions interpolate(@Nonnull Collection<Map<String, String>> properties);
 }

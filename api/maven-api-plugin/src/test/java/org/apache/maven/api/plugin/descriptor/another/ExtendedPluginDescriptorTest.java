@@ -31,11 +31,11 @@ class ExtendedPluginDescriptorTest {
     /**
      * A subclass of the generated class {@link PluginDescriptor} that adds an additional field.
      */
-    public static class ExtendedPluginDescriptor extends PluginDescriptor {
+    static class ExtendedPluginDescriptor extends PluginDescriptor {
 
         private final String additionalField;
 
-        protected ExtendedPluginDescriptor(Builder builder) {
+        ExtendedPluginDescriptor(Builder builder) {
             super(builder);
             this.additionalField = builder.additionalField;
         }
@@ -44,10 +44,10 @@ class ExtendedPluginDescriptorTest {
             return additionalField;
         }
 
-        public static class Builder extends PluginDescriptor.Builder {
+        static class Builder extends PluginDescriptor.Builder {
             protected String additionalField;
 
-            public Builder() {
+            Builder() {
                 super(false);
             }
 
@@ -56,6 +56,7 @@ class ExtendedPluginDescriptorTest {
                 return this;
             }
 
+            @Override
             public ExtendedPluginDescriptor build() {
                 return new ExtendedPluginDescriptor(this);
             }

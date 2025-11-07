@@ -102,22 +102,21 @@ public class DefaultPluginArtifactsCache implements PluginArtifactsCache {
                 return true;
             }
 
-            if (!(o instanceof CacheKey)) {
+            if (o instanceof CacheKey that) {
+                return CacheUtils.pluginEquals(plugin, that.plugin)
+                        && Objects.equals(workspace, that.workspace)
+                        && Objects.equals(localRepo, that.localRepo)
+                        && RepositoryUtils.repositoriesEquals(repositories, that.repositories)
+                        && Objects.equals(filter, that.filter);
+            } else {
                 return false;
             }
-
-            CacheKey that = (CacheKey) o;
-
-            return CacheUtils.pluginEquals(plugin, that.plugin)
-                    && Objects.equals(workspace, that.workspace)
-                    && Objects.equals(localRepo, that.localRepo)
-                    && RepositoryUtils.repositoriesEquals(repositories, that.repositories)
-                    && Objects.equals(filter, that.filter);
         }
     }
 
     protected final Map<Key, CacheRecord> cache = new ConcurrentHashMap<>();
 
+    @Override
     public Key createKey(
             Plugin plugin,
             DependencyFilter extensionFilter,
@@ -126,6 +125,7 @@ public class DefaultPluginArtifactsCache implements PluginArtifactsCache {
         return new CacheKey(plugin, extensionFilter, repositories, session);
     }
 
+    @Override
     public CacheRecord get(Key key) throws PluginResolutionException {
         CacheRecord cacheRecord = cache.get(key);
 
@@ -136,6 +136,7 @@ public class DefaultPluginArtifactsCache implements PluginArtifactsCache {
         return cacheRecord;
     }
 
+    @Override
     public CacheRecord put(Key key, List<Artifact> pluginArtifacts) {
         Objects.requireNonNull(pluginArtifacts, "pluginArtifacts cannot be null");
 
@@ -154,6 +155,7 @@ public class DefaultPluginArtifactsCache implements PluginArtifactsCache {
         }
     }
 
+    @Override
     public CacheRecord put(Key key, PluginResolutionException exception) {
         Objects.requireNonNull(exception, "exception cannot be null");
 
@@ -166,6 +168,7 @@ public class DefaultPluginArtifactsCache implements PluginArtifactsCache {
         return record;
     }
 
+    @Override
     public void flush() {
         cache.clear();
     }
@@ -178,6 +181,7 @@ public class DefaultPluginArtifactsCache implements PluginArtifactsCache {
         return CacheUtils.pluginEquals(a, b);
     }
 
+    @Override
     public void register(MavenProject project, Key cacheKey, CacheRecord record) {
         // default cache does not track record usage
     }

@@ -18,16 +18,15 @@
  */
 package org.apache.maven.model.building;
 
-import java.nio.file.Path;
+import java.io.File;
 
 import org.apache.maven.model.Model;
 
 /**
  * Assists in the handling of model problems.
  *
- * @deprecated use {@link org.apache.maven.api.services.ModelBuilder} instead
+ * @author Benjamin Bentmann
  */
-@Deprecated(since = "4.0.0")
 public class ModelProblemUtils {
 
     /**
@@ -45,9 +44,9 @@ public class ModelProblemUtils {
 
         buffer.append(toId(model));
 
-        Path pomPath = model.getPomPath();
-        if (pomPath != null) {
-            buffer.append(" (").append(pomPath).append(')');
+        File pomFile = model.getPomFile();
+        if (pomFile != null) {
+            buffer.append(" (").append(pomFile).append(')');
         }
 
         return buffer.toString();
@@ -57,10 +56,10 @@ public class ModelProblemUtils {
         String path = "";
 
         if (model != null) {
-            Path pomPath = model.getPomPath();
+            File pomFile = model.getPomFile();
 
-            if (pomPath != null) {
-                path = pomPath.toAbsolutePath().toString();
+            if (pomFile != null) {
+                path = pomFile.getAbsolutePath();
             }
         }
 
@@ -71,10 +70,7 @@ public class ModelProblemUtils {
         if (model == null) {
             return "";
         }
-        return toId(model.getDelegate());
-    }
 
-    static String toId(org.apache.maven.api.model.Model model) {
         String groupId = model.getGroupId();
         if (groupId == null && model.getParent() != null) {
             groupId = model.getParent().getGroupId();
@@ -130,7 +126,7 @@ public class ModelProblemUtils {
             buffer.append(problem.getModelId());
 
             if (!problem.getSource().isEmpty()) {
-                if (buffer.length() > 0) {
+                if (!buffer.isEmpty()) {
                     buffer.append(", ");
                 }
                 buffer.append(problem.getSource());
@@ -138,14 +134,14 @@ public class ModelProblemUtils {
         }
 
         if (problem.getLineNumber() > 0) {
-            if (buffer.length() > 0) {
+            if (!buffer.isEmpty()) {
                 buffer.append(", ");
             }
             buffer.append("line ").append(problem.getLineNumber());
         }
 
         if (problem.getColumnNumber() > 0) {
-            if (buffer.length() > 0) {
+            if (!buffer.isEmpty()) {
                 buffer.append(", ");
             }
             buffer.append("column ").append(problem.getColumnNumber());

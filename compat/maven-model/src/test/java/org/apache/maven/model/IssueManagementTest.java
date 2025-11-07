@@ -45,7 +45,7 @@ class IssueManagementTest {
     @Test
     void testEqualsIdentity() {
         IssueManagement thing = new IssueManagement();
-        assertTrue(thing.equals(thing));
+        assertTrue(thing.equals(thing), "Expected " + thing + " to equal " + thing);
     }
 
     @Test
@@ -53,6 +53,7 @@ class IssueManagementTest {
         assertNotNull(new IssueManagement().toString());
     }
 
+    @Test
     public void testToStringNotNonsense() {
         IssueManagement im = new IssueManagement();
         im.setSystem("Velociraptor");

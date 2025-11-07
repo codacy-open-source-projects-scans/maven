@@ -47,24 +47,24 @@ import org.apache.maven.api.services.DependencyResolverResult;
 import org.apache.maven.api.services.ProjectBuilder;
 import org.apache.maven.api.services.ProjectBuilderRequest;
 import org.apache.maven.api.services.SettingsBuilder;
+import org.apache.maven.api.services.ToolchainsBuilder;
 import org.apache.maven.artifact.handler.manager.ArtifactHandlerManager;
 import org.apache.maven.bridge.MavenRepositorySystem;
 import org.apache.maven.execution.DefaultMavenExecutionRequest;
 import org.apache.maven.execution.DefaultMavenExecutionResult;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.execution.scope.internal.MojoExecutionScope;
-import org.apache.maven.internal.impl.resolver.MavenSessionBuilderSupplier;
+import org.apache.maven.impl.DefaultToolchainManager;
+import org.apache.maven.impl.InternalSession;
+import org.apache.maven.impl.resolver.MavenSessionBuilderSupplier;
 import org.apache.maven.rtinfo.RuntimeInformation;
 import org.apache.maven.session.scope.internal.SessionScope;
-import org.apache.maven.toolchain.DefaultToolchainManagerPrivate;
-import org.apache.maven.toolchain.building.ToolchainsBuilder;
 import org.codehaus.plexus.PlexusContainer;
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
 import org.codehaus.plexus.testing.PlexusTest;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.impl.MetadataGeneratorFactory;
-import org.eclipse.aether.repository.LocalRepository;
 import org.eclipse.aether.repository.RemoteRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -89,7 +89,7 @@ class TestApi {
     MavenRepositorySystem mavenRepositorySystem;
 
     @Inject
-    DefaultToolchainManagerPrivate toolchainManagerPrivate;
+    DefaultToolchainManager toolchainManagerPrivate;
 
     @Inject
     PlexusContainer plexusContainer;
@@ -115,9 +115,9 @@ class TestApi {
     @BeforeEach
     void setup() {
         // create session with any local repo, is redefined anyway below
-        RepositorySystemSession rss = new MavenSessionBuilderSupplier(repositorySystem)
+        RepositorySystemSession rss = new MavenSessionBuilderSupplier(repositorySystem, true)
                 .get()
-                .withLocalRepositoryBaseDirectories(new File("target").toPath())
+                .withLocalRepositoryBaseDirectories(new File("target/test-classes/apiv4-repo").toPath())
                 .build();
         DefaultMavenExecutionRequest mer = new DefaultMavenExecutionRequest();
         DefaultMavenExecutionResult meres = new DefaultMavenExecutionResult();
@@ -129,12 +129,9 @@ class TestApi {
                 mavenRepositorySystem,
                 new DefaultLookup(plexusContainer),
                 runtimeInformation);
-        DefaultLocalRepository localRepository =
-                new DefaultLocalRepository(new LocalRepository("target/test-classes/apiv4-repo"));
         org.apache.maven.api.RemoteRepository remoteRepository = session.getRemoteRepository(
                 new RemoteRepository.Builder("mirror", "default", "file:target/test-classes/repo").build());
-        this.session = session.withLocalRepository(localRepository)
-                .withRemoteRepositories(Collections.singletonList(remoteRepository));
+        this.session = session.withRemoteRepositories(Collections.singletonList(remoteRepository));
         InternalSession.associate(rss, this.session);
         sessionScope.enter();
         sessionScope.seed(InternalMavenSession.class, InternalMavenSession.from(this.session));
@@ -160,7 +157,7 @@ class TestApi {
         assertNotNull(resolved);
         assertNotNull(resolved.getPath());
         Optional<Path> op = session.getArtifactPath(resolved);
-        assertTrue(op.isPresent());
+        assertTrue(op.isPresent(), "Expected " + op + ".isPresent() to return true");
         assertEquals(resolved.getPath(), op.get());
     }
 

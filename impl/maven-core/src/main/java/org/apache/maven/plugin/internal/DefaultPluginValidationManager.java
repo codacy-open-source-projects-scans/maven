@@ -67,7 +67,7 @@ public final class DefaultPluginValidationManager extends AbstractEventSpy imple
 
     private static final String PLUGIN_EXCLUDES_KEY = DefaultPluginValidationManager.class.getName() + ".excludes";
 
-    public static final ValidationReportLevel DEFAULT_VALIDATION_LEVEL = ValidationReportLevel.INLINE;
+    private static final ValidationReportLevel DEFAULT_VALIDATION_LEVEL = ValidationReportLevel.INLINE;
 
     private static final Collection<ValidationReportLevel> INLINE_VALIDATION_LEVEL = Collections.unmodifiableCollection(
             Arrays.asList(ValidationReportLevel.INLINE, ValidationReportLevel.BRIEF));
@@ -85,8 +85,7 @@ public final class DefaultPluginValidationManager extends AbstractEventSpy imple
 
     @Override
     public void onEvent(Object event) {
-        if (event instanceof ExecutionEvent) {
-            ExecutionEvent executionEvent = (ExecutionEvent) event;
+        if (event instanceof ExecutionEvent executionEvent) {
             if (executionEvent.getType() == ExecutionEvent.Type.SessionStarted) {
                 RepositorySystemSession repositorySystemSession =
                         executionEvent.getSession().getRepositorySession();

@@ -37,6 +37,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.maven.api.DependencyScope;
 import org.apache.maven.api.Lifecycle;
 import org.apache.maven.api.model.InputLocation;
 import org.apache.maven.api.model.InputSource;
@@ -55,6 +56,7 @@ import static org.apache.maven.api.Lifecycle.Phase.ALL;
 import static org.apache.maven.api.Lifecycle.Phase.BUILD;
 import static org.apache.maven.api.Lifecycle.Phase.COMPILE;
 import static org.apache.maven.api.Lifecycle.Phase.DEPLOY;
+import static org.apache.maven.api.Lifecycle.Phase.EACH;
 import static org.apache.maven.api.Lifecycle.Phase.INITIALIZE;
 import static org.apache.maven.api.Lifecycle.Phase.INSTALL;
 import static org.apache.maven.api.Lifecycle.Phase.INTEGRATION_TEST;
@@ -71,6 +73,7 @@ import static org.apache.maven.api.Lifecycle.Phase.VALIDATE;
 import static org.apache.maven.api.Lifecycle.Phase.VERIFY;
 import static org.apache.maven.internal.impl.Lifecycles.after;
 import static org.apache.maven.internal.impl.Lifecycles.alias;
+import static org.apache.maven.internal.impl.Lifecycles.children;
 import static org.apache.maven.internal.impl.Lifecycles.dependencies;
 import static org.apache.maven.internal.impl.Lifecycles.phase;
 import static org.apache.maven.internal.impl.Lifecycles.plugin;
@@ -89,7 +92,12 @@ public class DefaultLifecycleRegistry implements LifecycleRegistry {
             + ":default-lifecycle-bindings";
 
     public static final InputLocation DEFAULT_LIFECYCLE_INPUT_LOCATION =
-            new InputLocation(new InputSource(DEFAULT_LIFECYCLE_MODELID, null));
+            InputLocation.of(InputSource.of(DEFAULT_LIFECYCLE_MODELID, null));
+
+    public static final String SCOPE_COMPILE = DependencyScope.COMPILE.id();
+    public static final String SCOPE_RUNTIME = DependencyScope.RUNTIME.id();
+    public static final String SCOPE_TEST_ONLY = DependencyScope.TEST_ONLY.id();
+    public static final String SCOPE_TEST = DependencyScope.TEST.id();
 
     private final List<LifecycleProvider> providers;
 
@@ -129,6 +137,7 @@ public class DefaultLifecycleRegistry implements LifecycleRegistry {
         return stream().filter(lf -> Objects.equals(id, lf.id())).findAny();
     }
 
+    @Override
     public List<String> computePhases(Lifecycle lifecycle) {
         Graph graph = new Graph();
         addPhases(graph, null, null, lifecycle.v3phases());
@@ -349,7 +358,7 @@ public class DefaultLifecycleRegistry implements LifecycleRegistry {
 
     static class CleanLifecycle implements Lifecycle {
 
-        private static final String MAVEN_CLEAN_PLUGIN_VERSION = "3.2.0";
+        private static final String MAVEN_CLEAN_PLUGIN_VERSION = "3.4.0";
 
         @Override
         public String id() {
@@ -358,11 +367,13 @@ public class DefaultLifecycleRegistry implements LifecycleRegistry {
 
         @Override
         public Collection<Phase> phases() {
+            // START SNIPPET: clean
             return List.of(phase(
                     Phase.CLEAN,
                     plugin(
                             MAVEN_PLUGINS + "maven-clean-plugin:" + MAVEN_CLEAN_PLUGIN_VERSION + ":clean",
                             Phase.CLEAN)));
+            // END SNIPPET: clean
         }
 
         @Override
@@ -379,37 +390,42 @@ public class DefaultLifecycleRegistry implements LifecycleRegistry {
 
         @Override
         public Collection<Phase> phases() {
+            // START SNIPPET: default
             return List.of(phase(
                     ALL,
-                    phase(VALIDATE, phase(INITIALIZE)),
+                    children(ALL),
                     phase(
-                            BUILD,
-                            after(VALIDATE),
-                            phase(SOURCES),
-                            phase(RESOURCES),
-                            phase(COMPILE, after(SOURCES), dependencies(COMPILE, READY)),
-                            phase(READY, after(COMPILE), after(RESOURCES)),
-                            phase(PACKAGE, after(READY), dependencies("runtime", PACKAGE))),
-                    phase(
-                            VERIFY,
-                            after(VALIDATE),
+                            EACH,
+                            phase(VALIDATE, phase(INITIALIZE)),
                             phase(
-                                    UNIT_TEST,
-                                    phase(TEST_SOURCES),
-                                    phase(TEST_RESOURCES),
+                                    BUILD,
+                                    after(VALIDATE),
+                                    phase(SOURCES),
+                                    phase(RESOURCES),
+                                    phase(COMPILE, after(SOURCES), dependencies(SCOPE_COMPILE, READY)),
+                                    phase(READY, after(COMPILE), after(RESOURCES)),
+                                    phase(PACKAGE, after(READY), dependencies(SCOPE_RUNTIME, PACKAGE))),
+                            phase(
+                                    VERIFY,
+                                    after(VALIDATE),
                                     phase(
-                                            TEST_COMPILE,
-                                            after(TEST_SOURCES),
-                                            after(READY),
-                                            dependencies("test-only", READY)),
-                                    phase(
-                                            TEST,
-                                            after(TEST_COMPILE),
-                                            after(TEST_RESOURCES),
-                                            dependencies("test", READY))),
-                            phase(INTEGRATION_TEST)),
-                    phase(INSTALL, after(PACKAGE)),
-                    phase(DEPLOY, after(PACKAGE))));
+                                            UNIT_TEST,
+                                            phase(TEST_SOURCES),
+                                            phase(TEST_RESOURCES),
+                                            phase(
+                                                    TEST_COMPILE,
+                                                    after(TEST_SOURCES),
+                                                    after(READY),
+                                                    dependencies(SCOPE_TEST_ONLY, READY)),
+                                            phase(
+                                                    TEST,
+                                                    after(TEST_COMPILE),
+                                                    after(TEST_RESOURCES),
+                                                    dependencies(SCOPE_TEST, READY))),
+                                    phase(INTEGRATION_TEST)),
+                            phase(INSTALL, after(PACKAGE)),
+                            phase(DEPLOY, after(PACKAGE)))));
+            // END SNIPPET: default
         }
 
         @Override
@@ -455,7 +471,7 @@ public class DefaultLifecycleRegistry implements LifecycleRegistry {
 
     static class SiteLifecycle implements Lifecycle {
 
-        private static final String MAVEN_SITE_PLUGIN_VERSION = "3.12.1";
+        private static final String MAVEN_SITE_PLUGIN_VERSION = "3.21.0";
         private static final String MAVEN_SITE_PLUGIN =
                 MAVEN_PLUGINS + "maven-site-plugin:" + MAVEN_SITE_PLUGIN_VERSION + ":";
         private static final String PHASE_SITE = "site";
@@ -468,12 +484,14 @@ public class DefaultLifecycleRegistry implements LifecycleRegistry {
 
         @Override
         public Collection<Phase> phases() {
+            // START SNIPPET: site
             return List.of(
                     phase(PHASE_SITE, plugin(MAVEN_SITE_PLUGIN + "site", PHASE_SITE)),
                     phase(
                             PHASE_SITE_DEPLOY,
                             after(PHASE_SITE),
                             plugin(MAVEN_SITE_PLUGIN + "deploy", PHASE_SITE_DEPLOY)));
+            // END SNIPPET: site
         }
 
         @Override

@@ -30,10 +30,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Predicate;
 
+import org.apache.maven.api.services.model.ModelProcessor;
 import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.building.ModelProblem;
-import org.apache.maven.model.locator.ModelLocator;
 import org.apache.maven.plugin.PluginManagerException;
 import org.apache.maven.plugin.PluginResolutionException;
 import org.apache.maven.project.MavenProject;
@@ -51,12 +51,12 @@ import org.slf4j.LoggerFactory;
 @Singleton
 public class MultiModuleCollectionStrategy implements ProjectCollectionStrategy {
     private static final Logger LOGGER = LoggerFactory.getLogger(MultiModuleCollectionStrategy.class);
-    private final ModelLocator modelLocator;
+    private final ModelProcessor modelProcessor;
     private final ProjectsSelector projectsSelector;
 
     @Inject
-    public MultiModuleCollectionStrategy(ModelLocator modelLocator, ProjectsSelector projectsSelector) {
-        this.modelLocator = modelLocator;
+    public MultiModuleCollectionStrategy(ModelProcessor modelProcessor, ProjectsSelector projectsSelector) {
+        this.modelProcessor = modelProcessor;
         this.projectsSelector = projectsSelector;
     }
 
@@ -102,7 +102,7 @@ public class MultiModuleCollectionStrategy implements ProjectCollectionStrategy 
         if (request.getPom().getParentFile().toPath().equals(rootDirectory)) {
             return request.getPom();
         } else {
-            Path rootProjectPom = modelLocator.locateExistingPom(rootDirectory);
+            Path rootProjectPom = modelProcessor.locateExistingPom(rootDirectory);
             if (rootProjectPom == null) {
                 LOGGER.info(
                         "Maven detected that the requested POM file is part of a multi-module project, "
@@ -136,12 +136,12 @@ public class MultiModuleCollectionStrategy implements ProjectCollectionStrategy 
      * - Because of inter-module dependency collection, all projects in the multi-module project are collected.
      * - The plugin is not yet installed in a repository.
      *
-     * Therefore the build fails because the plugin is not found and plugins cannot be built in the same session.
+     * Therefore, the build fails because the plugin is not found and plugins cannot be built in the same session.
      *
      * The integration test for <a href="https://issues.apache.org/jira/browse/MNG-5572">MNG-5572</a> is an
      *   example of this scenario.
      *
-     * @return true if the module which fails to collect the inter-module plugin is not part of the build.
+     * @return true if the module which fails to collect the inter-module plugin is not part of the build
      */
     private boolean isModuleOutsideRequestScopeDependingOnPluginModule(
             MavenExecutionRequest request, ProjectBuildingException exception) {

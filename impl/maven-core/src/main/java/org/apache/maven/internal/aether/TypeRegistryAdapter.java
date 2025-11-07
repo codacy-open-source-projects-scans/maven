@@ -21,7 +21,7 @@ package org.apache.maven.internal.aether;
 import org.apache.maven.api.PathType;
 import org.apache.maven.api.Type;
 import org.apache.maven.api.services.TypeRegistry;
-import org.apache.maven.internal.impl.resolver.type.DefaultType;
+import org.apache.maven.impl.resolver.type.DefaultType;
 import org.eclipse.aether.artifact.ArtifactType;
 import org.eclipse.aether.artifact.ArtifactTypeRegistry;
 
@@ -37,18 +37,15 @@ class TypeRegistryAdapter implements ArtifactTypeRegistry {
     @Override
     public ArtifactType get(String typeId) {
         Type type = typeRegistry.require(typeId);
-        if (type instanceof ArtifactType) {
-            return (ArtifactType) type;
+        if (type instanceof ArtifactType artifactType) {
+            return artifactType;
         }
-        if (type != null) {
-            return new DefaultType(
-                    type.id(),
-                    type.getLanguage(),
-                    type.getExtension(),
-                    type.getClassifier(),
-                    type.isIncludesDependencies(),
-                    type.getPathTypes().toArray(new PathType[0]));
-        }
-        return null;
+        return new DefaultType(
+                type.id(),
+                type.getLanguage(),
+                type.getExtension(),
+                type.getClassifier(),
+                type.isIncludesDependencies(),
+                type.getPathTypes().toArray(new PathType[0]));
     }
 }

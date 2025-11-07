@@ -18,10 +18,6 @@
  */
 package org.apache.maven.model.building;
 
-import java.util.function.Supplier;
-
-import org.apache.maven.building.Source;
-
 /**
  * Caches auxiliary data used during model building like already processed raw/effective models. The data in the cache
  * is meant for exclusive consumption by the model builder and is opaque to the cache implementation. The cache key is
@@ -29,12 +25,30 @@ import org.apache.maven.building.Source;
  * identity of a model. The tag allows for further classification of the associated data on the sole discretion of the
  * model builder.
  *
- * @deprecated use {@link org.apache.maven.api.services.ModelBuilder} instead
+ * @deprecated use {@code org.apache.maven.api.services.ModelBuilder} instead
  */
 @Deprecated(since = "4.0.0")
 public interface ModelCache {
 
-    <T> T computeIfAbsent(String groupId, String artifactId, String version, String tag, Supplier<T> data);
+    /**
+     * Puts the specified data into the cache.
+     *
+     * @param groupId The group id of the cache record, must not be {@code null}.
+     * @param artifactId The artifact id of the cache record, must not be {@code null}.
+     * @param version The version of the cache record, must not be {@code null}.
+     * @param tag The tag of the cache record, must not be {@code null}.
+     * @param data The data to store in the cache, must not be {@code null}.
+     */
+    void put(String groupId, String artifactId, String version, String tag, Object data);
 
-    <T> T computeIfAbsent(Source path, String tag, Supplier<T> data);
+    /**
+     * Gets the specified data from the cache.
+     *
+     * @param groupId The group id of the cache record, must not be {@code null}.
+     * @param artifactId The artifact id of the cache record, must not be {@code null}.
+     * @param version The version of the cache record, must not be {@code null}.
+     * @param tag The tag of the cache record, must not be {@code null}.
+     * @return The requested data or {@code null} if none was present in the cache.
+     */
+    Object get(String groupId, String artifactId, String version, String tag);
 }

@@ -21,7 +21,6 @@ package org.apache.maven.settings.validation;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.apache.maven.internal.impl.DefaultSettingsBuilder;
 import org.apache.maven.settings.Mirror;
 import org.apache.maven.settings.Profile;
 import org.apache.maven.settings.Proxy;
@@ -45,7 +44,7 @@ class DefaultSettingsValidatorTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        validator = new DefaultSettingsValidator(new DefaultSettingsBuilder());
+        validator = new DefaultSettingsValidator();
     }
 
     @AfterEach
@@ -222,8 +221,9 @@ class DefaultSettingsValidatorTest {
 
     private static class SimpleProblemCollector implements SettingsProblemCollector {
 
-        public List<String> messages = new ArrayList<>();
+        List<String> messages = new ArrayList<>();
 
+        @Override
         public void add(Severity severity, String message, int line, int column, Exception cause) {
             messages.add(message);
         }

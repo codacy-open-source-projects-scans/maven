@@ -32,8 +32,8 @@ import java.util.Properties;
 import org.apache.maven.MavenTestHelper;
 import org.apache.maven.artifact.repository.layout.DefaultRepositoryLayout;
 import org.apache.maven.bridge.MavenRepositorySystem;
+import org.apache.maven.impl.InternalSession;
 import org.apache.maven.internal.impl.InternalMavenSession;
-import org.apache.maven.internal.impl.InternalSession;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.model.PluginExecution;
@@ -51,10 +51,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.codehaus.plexus.testing.PlexusExtension.getBasedir;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.endsWith;
-import static org.hamcrest.Matchers.lessThan;
-import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -66,11 +62,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @PlexusTest
 class PomConstructionTest {
-    private static String BASE_DIR = "src/test";
+    private static final String BASE_DIR = "src/test";
 
-    private static String BASE_POM_DIR = BASE_DIR + "/resources-project-builder";
+    private static final String BASE_POM_DIR = BASE_DIR + "/resources-project-builder";
 
-    private static String BASE_MIXIN_DIR = BASE_DIR + "/resources-mixins";
+    private static final String BASE_MIXIN_DIR = BASE_DIR + "/resources-mixins";
 
     @Inject
     private DefaultProjectBuilder projectBuilder;
@@ -352,27 +348,20 @@ class PomConstructionTest {
     // them into a resolver, create the expression to extract the data to validate the Model, and the URI
     // to validate the properties. We also need a way to navigate from the Tex specification documents to
     // the test in question and vice versa. A little Eclipse plugin would do the trick.
+    @Test
     public void testThatExecutionsWithoutIdsAreMergedAndTheChildWins() throws Exception {
         PomTestWrapper tester = buildPom("micromailer");
         assertModelEquals(tester, "child-descriptor", "build/plugins[1]/executions[1]/goals[1]");
     }
 
-    /*MNG-
-    public void testDependencyScope()
-        throws Exception
-    {
-        PomTestWrapper pom = buildPom( "dependency-scope/sub" );
-
-    }*/
-
-    /*MNG- 4010*/
+    /*MNG-4010*/
     @Test
     void testDuplicateExclusionsDependency() throws Exception {
         PomTestWrapper pom = buildPom("duplicate-exclusions-dependency/sub");
         assertEquals(1, ((List<?>) pom.getValue("dependencies[1]/exclusions")).size());
     }
 
-    /*MNG- 4008*/
+    /*MNG-4008*/
     @Test
     void testMultipleFilters() throws Exception {
         PomTestWrapper pom = buildPom("multiple-filters");
@@ -455,20 +444,6 @@ class PomConstructionTest {
         assertEquals("1.3.0-SNAPSHOT", pom.getValue("build/plugins[1]/version"));
     }
 
-    /*
-    public void testMaven()
-        throws Exception
-    {
-        PomTestWrapper pom =  buildPomFromMavenProject( "maven-build/sub/pom.xml", null );
-
-        for( String s: pom.getMavenProject().getTestClasspathElements() )
-        {
-            System.out.println( s );
-        }
-
-    }
-    */
-
     /* MNG-3567*/
     @Test
     void testPluginManagementInherited() throws Exception {
@@ -540,13 +515,6 @@ class PomConstructionTest {
                 "src/main/mdo/security.xml", (pom.getValue("build/plugins[1]/executions[2]/configuration[1]/model")));
     }
 
-    /*
-        public void testPluginConfigDuplicate()
-        throws Exception
-    {
-        PomTestWrapper pom = buildPom( "plugin-config-duplicate/dup" );
-    }
-    */
     @Test
     void testSingleConfigurationInheritance() throws Exception {
         PomTestWrapper pom = buildPom("single-configuration-inheritance");
@@ -1061,13 +1029,17 @@ class PomConstructionTest {
         PomTestWrapper pom = buildPom("merged-filter-order/sub");
 
         assertEquals(7, ((List<?>) pom.getValue("build/filters")).size());
-        assertThat(pom.getValue("build/filters[1]").toString(), endsWith("child-a.properties"));
-        assertThat(pom.getValue("build/filters[2]").toString(), endsWith("child-c.properties"));
-        assertThat(pom.getValue("build/filters[3]").toString(), endsWith("child-b.properties"));
-        assertThat(pom.getValue("build/filters[4]").toString(), endsWith("child-d.properties"));
-        assertThat(pom.getValue("build/filters[5]").toString(), endsWith("parent-c.properties"));
-        assertThat(pom.getValue("build/filters[6]").toString(), endsWith("parent-b.properties"));
-        assertThat(pom.getValue("build/filters[7]").toString(), endsWith("parent-d.properties"));
+        assertTrue(
+                pom.getValue("build/filters[1]").toString().endsWith("child-a.properties"),
+                "Expected " + pom.getValue("build/filters[1]") + " to end with child-a.properties");
+        assertTrue(
+                pom.getValue("build/filters[2]").toString().endsWith("child-c.properties"),
+                "Expected " + pom.getValue("build/filters[2]") + " to end with child-c.properties");
+        assertTrue(pom.getValue("build/filters[3]").toString().endsWith("child-b.properties"));
+        assertTrue(pom.getValue("build/filters[4]").toString().endsWith("child-d.properties"));
+        assertTrue(pom.getValue("build/filters[5]").toString().endsWith("parent-c.properties"));
+        assertTrue(pom.getValue("build/filters[6]").toString().endsWith("parent-b.properties"));
+        assertTrue(pom.getValue("build/filters[7]").toString().endsWith("parent-d.properties"));
     }
 
     /** MNG-4027*/
@@ -1208,7 +1180,7 @@ class PomConstructionTest {
         PomTestWrapper pom = buildPom("baseuri-interpolation/pom.xml");
         String prop1 = pom.getValue("properties/prop1").toString();
         assertEquals(pom.getBasedir().toPath().toUri().toASCIIString(), prop1);
-        assertThat(prop1, startsWith("file:///"));
+        assertTrue(prop1.startsWith("file:///"), "Expected " + prop1 + " to start with " + "file:///");
     }
 
     /* MNG-3811*/
@@ -1253,6 +1225,26 @@ class PomConstructionTest {
         testCompleteModel(pom);
     }
 
+    /*MNG-11062*/
+    @Test
+    void testTargetPathResourceRegression() throws Exception {
+        PomTestWrapper pom = buildPom("target-path-regression");
+
+        // Verify main resources targetPath is preserved
+        assertEquals(1, ((List<?>) pom.getValue("build/resources")).size());
+        assertEquals("custom-classes", pom.getValue("build/resources[1]/targetPath"));
+        assertPathSuffixEquals("src/main/resources", pom.getValue("build/resources[1]/directory"));
+
+        // Verify testResources targetPath with property interpolation is preserved
+        assertEquals(2, ((List<?>) pom.getValue("build/testResources")).size());
+        String buildPath = pom.getBasedir().toPath().resolve("target").toString();
+        assertEquals(buildPath + "/test-classes", pom.getValue("build/testResources[1]/targetPath"));
+        assertPathSuffixEquals("src/test/resources", pom.getValue("build/testResources[1]/directory"));
+        assertEquals(buildPath + "/test-run", pom.getValue("build/testResources[2]/targetPath"));
+        assertPathSuffixEquals("src/test/data", pom.getValue("build/testResources[2]/directory"));
+    }
+
+    @SuppressWarnings("checkstyle:MethodLength")
     private void testCompleteModel(PomTestWrapper pom) throws Exception {
         assertEquals("4.0.0", pom.getValue("modelVersion"));
 
@@ -1607,6 +1599,7 @@ class PomConstructionTest {
     }
 
     // This will fail on a validation error if incorrect
+    @Test
     public void testDependencyManagementWithInterpolation() throws Exception {
         buildPom("dependency-management-with-interpolation/sub");
     }
@@ -1778,10 +1771,10 @@ class PomConstructionTest {
         for (int i = 0; i < plugins.size(); i++) {
             Plugin plugin = plugins.get(i);
             if ("maven-resources-plugin".equals(plugin.getArtifactId())) {
-                assertThat(resourcesPlugin, lessThan(0));
+                assertTrue(resourcesPlugin < 0, "Expected " + resourcesPlugin + " to be < " + 0);
                 resourcesPlugin = i;
             } else if ("maven-it-plugin-log-file".equals(plugin.getArtifactId())) {
-                assertThat(customPlugin, lessThan(0));
+                assertTrue(customPlugin < 0, "Expected " + customPlugin + " to be < " + 0);
                 customPlugin = i;
             }
         }
@@ -1884,10 +1877,11 @@ class PomConstructionTest {
 
         ProjectBuildingRequest config = new DefaultProjectBuildingRequest();
 
-        String localRepoUrl =
-                System.getProperty("maven.repo.local", System.getProperty("user.home") + "/.m2/repository");
-        localRepoUrl = "file://" + localRepoUrl;
-        config.setLocalRepository(repositorySystem.createArtifactRepository(
+        String localRepoPath = System.getProperty(
+                "maven.repo.local",
+                System.getProperty("user.home") + File.separator + ".m2" + File.separator + "repository");
+        String localRepoUrl = new File(localRepoPath).getAbsoluteFile().toURI().toString();
+        config.setLocalRepository(MavenRepositorySystem.createArtifactRepository(
                 "local", localRepoUrl, new DefaultRepositoryLayout(), null, null));
         config.setActiveProfileIds(Arrays.asList(profileIds));
         config.setSystemProperties(systemProperties);
@@ -1926,6 +1920,6 @@ class PomConstructionTest {
         for (String s : elements) {
             buffer.append(s).append(File.separator);
         }
-        return buffer.toString().substring(0, buffer.toString().length() - 1);
+        return buffer.toString().substring(0, buffer.length() - 1);
     }
 }

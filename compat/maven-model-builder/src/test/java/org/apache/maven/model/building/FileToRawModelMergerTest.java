@@ -28,9 +28,9 @@ import java.util.stream.Stream;
 import org.apache.maven.model.v4.MavenMerger;
 import org.junit.jupiter.api.Test;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.hasItems;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@Deprecated
 class FileToRawModelMergerTest {
 
     /**
@@ -47,8 +47,8 @@ class FileToRawModelMergerTest {
                         Type returnType = m.getParameterTypes()[0]
                                 .getMethod("get" + entity)
                                 .getGenericReturnType();
-                        if (returnType instanceof ParameterizedType) {
-                            return !((ParameterizedType) returnType).getActualTypeArguments()[0].equals(String.class);
+                        if (returnType instanceof ParameterizedType parameterizedType) {
+                            return !parameterizedType.getActualTypeArguments()[0].equals(String.class);
                         } else {
                             return false;
                         }
@@ -57,13 +57,15 @@ class FileToRawModelMergerTest {
                     }
                 })
                 .map(Method::getName)
-                .collect(Collectors.toList());
+                .toList();
 
         List<String> overriddenMethods = Stream.of(FileToRawModelMerger.class.getDeclaredMethods())
                 .map(Method::getName)
                 .filter(m -> m.startsWith("merge"))
                 .collect(Collectors.toList());
 
-        assertThat(overriddenMethods, hasItems(methodNames.toArray(new String[0])));
+        assertTrue(
+                overriddenMethods.containsAll(methodNames),
+                "Expected overriddenMethods " + overriddenMethods + " to contain all methodNames " + methodNames);
     }
 }

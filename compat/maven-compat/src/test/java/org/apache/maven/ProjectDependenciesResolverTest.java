@@ -32,43 +32,18 @@ import org.apache.maven.project.MavenProject;
 import org.junit.jupiter.api.Test;
 
 import static org.codehaus.plexus.testing.PlexusExtension.getBasedir;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.endsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @Deprecated
 class ProjectDependenciesResolverTest extends AbstractCoreMavenComponentTestCase {
     @Inject
     private ProjectDependenciesResolver resolver;
 
+    @Override
     protected String getProjectsDirectory() {
         return "src/test/projects/project-dependencies-resolver";
     }
-
-    /*
-    @Test
-    public void testExclusionsInDependencies()
-        throws Exception
-    {
-        MavenSession session = createMavenSession( null );
-        MavenProject project = session.getCurrentProject();
-
-        Exclusion exclusion = new Exclusion();
-        exclusion.setGroupId( "org.apache.maven.its" );
-        exclusion.setArtifactId( "a" );
-
-        new ProjectBuilder( project ).addDependency( "org.apache.maven.its", "b", "0.1", Artifact.SCOPE_RUNTIME,
-                                                     exclusion );
-
-        Set<Artifact> artifactDependencies =
-            resolver.resolve( project, Collections.singleton( Artifact.SCOPE_COMPILE ), session );
-        assertEquals( 0, artifactDependencies.size() );
-
-        artifactDependencies = resolver.resolve( project, Collections.singleton( Artifact.SCOPE_RUNTIME ), session );
-        assertEquals( 1, artifactDependencies.size() );
-        assertEquals( "b", artifactDependencies.iterator().next().getArtifactId() );
-    }
-    */
 
     @Test
     void testSystemScopeDependencies() throws Exception {
@@ -106,6 +81,6 @@ class ProjectDependenciesResolverTest extends AbstractCoreMavenComponentTestCase
         @SuppressWarnings("deprecation")
         List<Artifact> artifacts = project.getCompileArtifacts();
         assertEquals(1, artifacts.size());
-        assertThat(artifacts.get(0).getFile().getName(), endsWith("tools.jar"));
+        assertTrue(artifacts.get(0).getFile().getName().endsWith("tools.jar"));
     }
 }

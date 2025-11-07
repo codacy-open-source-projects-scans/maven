@@ -27,7 +27,7 @@ import java.io.StringWriter;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.maven.internal.impl.model.DefaultInterpolator;
+import org.apache.maven.impl.model.DefaultInterpolator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -51,8 +51,7 @@ public class MavenPropertiesTest {
 
     private MavenProperties properties;
 
-    static final String TEST_PROPERTIES =
-            """
+    static final String TEST_PROPERTIES = """
                 #
                 # test.properties
                 # Used in the PropertiesTest
@@ -230,14 +229,14 @@ public class MavenPropertiesTest {
         properties.load(new StringReader(TEST_PROPERTIES));
 
         String test = properties.getProperty("test");
-        assertEquals(test, "test");
+        assertEquals("test", test);
 
         String defaultValue = properties.getProperty("notfound", "default");
-        assertEquals(defaultValue, "default");
+        assertEquals("default", defaultValue);
 
         properties.setProperty("another", "another");
         Object o1 = properties.getProperty("another");
-        assertEquals(o1, "another");
+        assertEquals("another", o1);
 
         properties.store(System.err, null);
         System.err.println("====");

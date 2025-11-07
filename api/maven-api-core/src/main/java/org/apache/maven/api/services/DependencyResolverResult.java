@@ -41,7 +41,7 @@ import org.apache.maven.api.annotations.Nullable;
  * @see DependencyResolver#resolve(DependencyResolverRequest)
  */
 @Experimental
-public interface DependencyResolverResult {
+public interface DependencyResolverResult extends Result<DependencyResolverRequest> {
 
     /**
      * Gets the exceptions that occurred while building the dependency graph.
@@ -68,9 +68,9 @@ public interface DependencyResolverResult {
     List<Node> getNodes();
 
     /**
-     * Returns the file paths of all dependencies, regardless on which tool option those paths should be placed.
-     * The returned list may contain a mix of Java class-path, Java module-path, and other types of path elements.
-     * This collection has the same content than {@code getDependencies.values()} except that it does not contain
+     * Returns the file paths of all dependencies, regardless of which tool option those paths should be placed on.
+     * The returned list may contain a mix of Java class path, Java module path, and other types of path elements.
+     * This collection has the same content as {@code getDependencies.values()} except that it does not contain
      * null elements.
      *
      * @return the paths of all dependencies
@@ -79,7 +79,7 @@ public interface DependencyResolverResult {
     List<Path> getPaths();
 
     /**
-     * Returns the file paths of all dependencies, dispatched according the tool options where to place them.
+     * Returns the file paths of all dependencies and their assignments to different paths.
      * The {@link PathType} keys identify, for example, {@code --class-path} or {@code --module-path} options.
      * In the case of Java tools, the map may also contain {@code --patch-module} options, which are
      * {@linkplain org.apache.maven.api.JavaPathType#patchModule(String) handled in a special way}.
@@ -88,7 +88,7 @@ public interface DependencyResolverResult {
      * All types of path are determined together because they are sometime mutually exclusive.
      * For example, an artifact of type {@value org.apache.maven.api.Type#JAR} can be placed
      * either on the class-path or on the module-path. The project needs to make a choice
-     * (possibly using heuristic rules), then to add the dependency in only one of the options
+     * (possibly using heuristic rules), then add the dependency in only one of the paths
      * identified by {@link PathType}.
      *
      * @return file paths to place on the different tool options
@@ -97,8 +97,8 @@ public interface DependencyResolverResult {
     Map<PathType, List<Path>> getDispatchedPaths();
 
     /**
-     * {@return all dependencies associated to their paths}
-     * Some dependencies may be associated to a null value if there is no path available.
+     * {@return all dependencies associated with their paths}
+     * Some dependencies may be associated with a null value if there is no path available.
      */
     @Nonnull
     Map<Dependency, Path> getDependencies();
@@ -136,8 +136,8 @@ public interface DependencyResolverResult {
     Optional<ModuleDescriptor> getModuleDescriptor(@Nonnull Path dependency) throws IOException;
 
     /**
-     * If the module-path contains at least one filename-based auto-module, prepares a warning message.
-     * The module path is the collection of dependencies associated to {@link JavaPathType#MODULES}.
+     * If the module path contains at least one filename-based auto-module, prepares a warning message.
+     * The module path is the collection of dependencies associated with {@link JavaPathType#MODULES}.
      * It is caller's responsibility to send the message to a logger.
      *
      * @return warning message if at least one filename-based auto-module was found

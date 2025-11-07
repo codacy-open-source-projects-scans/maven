@@ -25,13 +25,11 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * This is a test set for <a href="https://issues.apache.org/jira/browse/MNG-8288">MNG-8288</a>.
+ * This is a test set for <a href="https://issues.apache.org/jira/browse/MNG-8294">MNG-8294</a>.
+ * @since 4.0.0-beta-5
+ *
  */
 class MavenITmng8294ParentChecksTest extends AbstractMavenIntegrationTestCase {
-
-    MavenITmng8294ParentChecksTest() {
-        super("[4.0.0-beta-5,)");
-    }
 
     /**
      *  Verify error when mismatch between GAV and relativePath

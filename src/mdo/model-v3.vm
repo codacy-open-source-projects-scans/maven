@@ -50,6 +50,7 @@
     #set ( $dummy = $imports.add( "java.util.AbstractList" ) )
     #set ( $dummy = $imports.add( "java.util.Collections" ) )
     #set ( $dummy = $imports.add( "java.util.HashMap" ) )
+    #set ( $dummy = $imports.add( "java.util.LinkedHashMap" ) )
     #set ( $dummy = $imports.add( "java.util.List" ) )
     #set ( $dummy = $imports.add( "java.util.Map" ) )
     #set ( $dummy = $imports.add( "java.util.Set" ) )
@@ -189,10 +190,10 @@ public class ${class.name}
 
     public void set${cap}(${type} ${field.name}) {
       #if ($field.type == "DOM")
-        if (${field.name} instanceof Xpp3Dom) {
-            if (!Objects.equals(((Xpp3Dom) ${field.name}).getDom(), getDelegate().${pfx}${cap}())) {
-                update(getDelegate().with${cap}(((Xpp3Dom) ${field.name}).getDom()));
-                ((Xpp3Dom) ${field.name}).setChildrenTracking(this::replace);
+        if (${field.name} instanceof Xpp3Dom xpp3Dom) {
+            if (!Objects.equals(xpp3Dom.getDom(), getDelegate().${pfx}${cap}())) {
+                update(getDelegate().with${cap}(xpp3Dom.getDom()));
+                xpp3Dom.setChildrenTracking(this::replace);
             }
         } else if (${field.name} == null) {
             if (getDelegate().${pfx}${cap}() != null) {
@@ -202,8 +203,8 @@ public class ${class.name}
             throw new IllegalArgumentException("Expected an Xpp3Dom object but received a " + ${field.name}.getClass() + ": " + ${field.name});
         }
       #elseif( $field.type == "java.util.Properties" )
-        Map<String, String> map = ${field.name}.entrySet().stream()
-                .collect(Collectors.toMap(e -> e.getKey().toString(), e -> e.getValue().toString()));
+        LinkedHashMap<String, String> map = new LinkedHashMap<>();
+        ${field.name}.forEach((key, value) -> map.put(key.toString(), value.toString()));
         if (!Objects.equals(map, getDelegate().get${cap}())) {
             update(getDelegate().with${cap}(map));
         }
@@ -280,7 +281,7 @@ public class ${class.name}
 
     public void setLocation(Object key, InputLocation location) {
         update(${packageModelV4}.${class.name}.newBuilder(getDelegate(), true)
-                        .location(key, location.toApiLocation()).build());
+                        .location(key, location != null ? location.toApiLocation() : null).build());
     }
 
     public InputLocation getImportedFrom() {
@@ -290,7 +291,7 @@ public class ${class.name}
 
     public void setImportedFrom(InputLocation location) {
         update(${packageModelV4}.${class.name}.newBuilder(getDelegate(), true)
-                        .importedFrom(location.toApiLocation()).build());
+                        .importedFrom(location != null ? location.toApiLocation() : null).build());
     }
 
     public Set<Object> getLocationKeys() {

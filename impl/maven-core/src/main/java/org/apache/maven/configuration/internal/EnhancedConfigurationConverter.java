@@ -18,6 +18,9 @@
  */
 package org.apache.maven.configuration.internal;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
 import org.codehaus.plexus.component.configurator.ComponentConfigurationException;
 import org.codehaus.plexus.component.configurator.ConfigurationListener;
 import org.codehaus.plexus.component.configurator.converters.composite.ObjectWithFieldsConverter;
@@ -26,13 +29,16 @@ import org.codehaus.plexus.component.configurator.expression.ExpressionEvaluatio
 import org.codehaus.plexus.component.configurator.expression.ExpressionEvaluator;
 import org.codehaus.plexus.component.configurator.expression.TypeAwareExpressionEvaluator;
 import org.codehaus.plexus.configuration.PlexusConfiguration;
-import org.eclipse.sisu.plexus.CompositeBeanHelper;
 
 /**
  * An enhanced {@link ObjectWithFieldsConverter} leveraging the {@link TypeAwareExpressionEvaluator}
  * interface.
  */
 class EnhancedConfigurationConverter extends ObjectWithFieldsConverter {
+
+    // Cache for expression evaluation results to avoid repeated evaluations
+    private static final ConcurrentMap<String, Object> EXPRESSION_CACHE = new ConcurrentHashMap<>();
+
     protected Object fromExpression(
             final PlexusConfiguration configuration, final ExpressionEvaluator evaluator, final Class<?> type)
             throws ComponentConfigurationException {
@@ -40,8 +46,8 @@ class EnhancedConfigurationConverter extends ObjectWithFieldsConverter {
         try {
             Object result = null;
             if (null != value && !value.isEmpty()) {
-                if (evaluator instanceof TypeAwareExpressionEvaluator) {
-                    result = ((TypeAwareExpressionEvaluator) evaluator).evaluate(value, type);
+                if (evaluator instanceof TypeAwareExpressionEvaluator typeAwareExpressionEvaluator) {
+                    result = typeAwareExpressionEvaluator.evaluate(value, type);
                 } else {
                     result = evaluator.evaluate(value);
                 }
@@ -49,8 +55,8 @@ class EnhancedConfigurationConverter extends ObjectWithFieldsConverter {
             if (null == result && configuration.getChildCount() == 0) {
                 value = configuration.getAttribute("default-value");
                 if (null != value && !value.isEmpty()) {
-                    if (evaluator instanceof TypeAwareExpressionEvaluator) {
-                        result = ((TypeAwareExpressionEvaluator) evaluator).evaluate(value, type);
+                    if (evaluator instanceof TypeAwareExpressionEvaluator typeAwareExpressionEvaluator) {
+                        result = typeAwareExpressionEvaluator.evaluate(value, type);
                     } else {
                         result = evaluator.evaluate(value);
                     }
@@ -66,6 +72,7 @@ class EnhancedConfigurationConverter extends ObjectWithFieldsConverter {
         }
     }
 
+    @Override
     public Object fromConfiguration(
             final ConverterLookup lookup,
             final PlexusConfiguration configuration,
@@ -88,7 +95,9 @@ class EnhancedConfigurationConverter extends ObjectWithFieldsConverter {
             if (null == value) {
                 processConfiguration(lookup, bean, loader, configuration, evaluator, listener);
             } else {
-                new CompositeBeanHelper(lookup, loader, evaluator, listener).setDefault(bean, value, configuration);
+                // Use optimized helper for better performance
+                new EnhancedCompositeBeanHelper(lookup, loader, evaluator, listener)
+                        .setDefault(bean, value, configuration);
             }
             return bean;
         } catch (final ComponentConfigurationException e) {
@@ -97,5 +106,35 @@ class EnhancedConfigurationConverter extends ObjectWithFieldsConverter {
             }
             throw e;
         }
+    }
+
+    public void processConfiguration(
+            final ConverterLookup lookup,
+            final Object bean,
+            final ClassLoader loader,
+            final PlexusConfiguration configuration,
+            final ExpressionEvaluator evaluator,
+            final ConfigurationListener listener)
+            throws ComponentConfigurationException {
+        final EnhancedCompositeBeanHelper helper = new EnhancedCompositeBeanHelper(lookup, loader, evaluator, listener);
+        for (int i = 0, size = configuration.getChildCount(); i < size; i++) {
+            final PlexusConfiguration element = configuration.getChild(i);
+            final String propertyName = fromXML(element.getName());
+            Class<?> valueType;
+            try {
+                valueType = getClassForImplementationHint(null, element, loader);
+            } catch (final ComponentConfigurationException e) {
+                valueType = null;
+            }
+            helper.setProperty(bean, propertyName, valueType, element);
+        }
+    }
+
+    /**
+     * Clear all caches. Useful for testing or memory management.
+     */
+    public static void clearCaches() {
+        EXPRESSION_CACHE.clear();
+        EnhancedCompositeBeanHelper.clearCaches();
     }
 }

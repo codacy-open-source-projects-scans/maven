@@ -18,8 +18,10 @@
  */
 package org.apache.maven.model.interpolation;
 
+@Deprecated
 public class StringVisitorModelInterpolatorTest extends AbstractModelInterpolatorTest {
+    @Override
     protected ModelInterpolator createInterpolator() {
-        return new StringVisitorModelInterpolator(null, null, bd -> true);
+        return new StringVisitorModelInterpolator().setVersionPropertiesProcessor(new DefaultModelVersionProcessor());
     }
 }

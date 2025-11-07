@@ -59,6 +59,7 @@ public class DefaultRepositoryMetadataManager extends AbstractLogEnabled impleme
     @Inject
     private UpdateCheckManager updateCheckManager;
 
+    @Override
     public void resolve(
             RepositoryMetadata metadata,
             List<ArtifactRepository> remoteRepositories,
@@ -70,6 +71,7 @@ public class DefaultRepositoryMetadataManager extends AbstractLogEnabled impleme
         resolve(metadata, request);
     }
 
+    @Override
     public void resolve(RepositoryMetadata metadata, RepositoryRequest request)
             throws RepositoryMetadataResolutionException {
         ArtifactRepository localRepo = request.getLocalRepository();
@@ -321,6 +323,7 @@ public class DefaultRepositoryMetadataManager extends AbstractLogEnabled impleme
         }
     }
 
+    @Override
     public void resolveAlways(
             RepositoryMetadata metadata, ArtifactRepository localRepository, ArtifactRepository remoteRepository)
             throws RepositoryMetadataResolutionException {
@@ -371,18 +374,19 @@ public class DefaultRepositoryMetadataManager extends AbstractLogEnabled impleme
                 }
             }
         } finally {
-            if (metadata instanceof RepositoryMetadata) {
-                updateCheckManager.touch((RepositoryMetadata) metadata, remoteRepository, file);
+            if (metadata instanceof RepositoryMetadata repositoryMetadata) {
+                updateCheckManager.touch(repositoryMetadata, remoteRepository, file);
             }
         }
         return file;
     }
 
+    @Override
     public void deploy(
             ArtifactMetadata metadata, ArtifactRepository localRepository, ArtifactRepository deploymentRepository)
             throws RepositoryMetadataDeploymentException {
         File file;
-        if (metadata instanceof RepositoryMetadata) {
+        if (metadata instanceof RepositoryMetadata repositoryMetadata) {
             getLogger().info("Retrieving previous metadata from " + deploymentRepository.getId());
             try {
                 file = getArtifactMetadataFromDeploymentRepository(metadata, localRepository, deploymentRepository);
@@ -395,7 +399,7 @@ public class DefaultRepositoryMetadataManager extends AbstractLogEnabled impleme
 
             if (file.isFile()) {
                 try {
-                    fixTimestamp(file, readMetadata(file), ((RepositoryMetadata) metadata).getMetadata());
+                    fixTimestamp(file, readMetadata(file), repositoryMetadata.getMetadata());
                 } catch (RepositoryMetadataReadException e) {
                     // will be reported via storeInlocalRepository
                 }
@@ -420,6 +424,7 @@ public class DefaultRepositoryMetadataManager extends AbstractLogEnabled impleme
         }
     }
 
+    @Override
     public void install(ArtifactMetadata metadata, ArtifactRepository localRepository)
             throws RepositoryMetadataInstallationException {
         try {

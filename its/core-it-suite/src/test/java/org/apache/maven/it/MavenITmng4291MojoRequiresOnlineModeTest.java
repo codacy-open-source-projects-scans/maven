@@ -29,10 +29,6 @@ import org.junit.jupiter.api.Test;
  */
 public class MavenITmng4291MojoRequiresOnlineModeTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng4291MojoRequiresOnlineModeTest() {
-        super(ALL_MAVEN_VERSIONS);
-    }
-
     /**
      * Test that the mojo annotation @requiresOnline is recognized. For a direct mojo invocation, this means to fail
      * when Maven is in offline mode but the mojo requires online model.
@@ -43,7 +39,16 @@ public class MavenITmng4291MojoRequiresOnlineModeTest extends AbstractMavenInteg
     public void testitDirectInvocation() throws Exception {
         File testDir = extractResources("/mng-4291");
 
-        Verifier verifier = newVerifier(testDir.getAbsolutePath());
+        // First, build the test plugin
+        Verifier verifier = newVerifier(new File(testDir, "maven-it-plugin-online").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Then, run the test project that uses the plugin
+        verifier = newVerifier(testDir.getAbsolutePath());
         verifier.setAutoclean(false);
         verifier.deleteDirectory("target");
         verifier.setLogFileName("log-direct.txt");
@@ -68,7 +73,16 @@ public class MavenITmng4291MojoRequiresOnlineModeTest extends AbstractMavenInteg
     public void testitLifecycleInvocation() throws Exception {
         File testDir = extractResources("/mng-4291");
 
-        Verifier verifier = newVerifier(testDir.getAbsolutePath());
+        // First, build the test plugin
+        Verifier verifier = newVerifier(new File(testDir, "maven-it-plugin-online").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Then, run the test project that uses the plugin
+        verifier = newVerifier(testDir.getAbsolutePath());
         verifier.setAutoclean(false);
         verifier.deleteDirectory("target");
         verifier.setLogFileName("log-lifecycle.txt");

@@ -19,9 +19,7 @@
 package org.apache.maven.cling.executor.internal;
 
 import java.nio.file.Path;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.maven.api.annotations.Nullable;
@@ -29,7 +27,6 @@ import org.apache.maven.api.cli.Executor;
 import org.apache.maven.api.cli.ExecutorException;
 import org.apache.maven.api.cli.ExecutorRequest;
 import org.apache.maven.cling.executor.ExecutorHelper;
-import org.apache.maven.cling.executor.ExecutorTool;
 
 import static java.util.Objects.requireNonNull;
 
@@ -39,17 +36,24 @@ import static java.util.Objects.requireNonNull;
 public class HelperImpl implements ExecutorHelper {
     private final Mode defaultMode;
     private final Path installationDirectory;
-    private final ExecutorTool executorTool;
+    private final Path userHomeDirectory;
     private final HashMap<Mode, Executor> executors;
 
     private final ConcurrentHashMap<String, String> cache;
 
-    public HelperImpl(Mode defaultMode, @Nullable Path installationDirectory, Executor embedded, Executor forked) {
+    public HelperImpl(
+            Mode defaultMode,
+            @Nullable Path installationDirectory,
+            @Nullable Path userHomeDirectory,
+            Executor embedded,
+            Executor forked) {
         this.defaultMode = requireNonNull(defaultMode);
         this.installationDirectory = installationDirectory != null
                 ? ExecutorRequest.getCanonicalPath(installationDirectory)
-                : ExecutorRequest.discoverMavenHome();
-        this.executorTool = new ToolboxTool(this);
+                : ExecutorRequest.discoverInstallationDirectory();
+        this.userHomeDirectory = userHomeDirectory != null
+                ? ExecutorRequest.getCanonicalPath(userHomeDirectory)
+                : ExecutorRequest.discoverUserHomeDirectory();
         this.executors = new HashMap<>();
 
         this.executors.put(Mode.EMBEDDED, requireNonNull(embedded, "embedded"));
@@ -64,7 +68,7 @@ public class HelperImpl implements ExecutorHelper {
 
     @Override
     public ExecutorRequest.Builder executorRequest() {
-        return ExecutorRequest.mavenBuilder(installationDirectory);
+        return ExecutorRequest.mavenBuilder(installationDirectory).userHomeDirectory(userHomeDirectory);
     }
 
     @Override
@@ -80,28 +84,6 @@ public class HelperImpl implements ExecutorHelper {
         });
     }
 
-    @Override
-    public Map<String, String> dump(ExecutorRequest.Builder request) throws ExecutorException {
-        return executorTool.dump(request);
-    }
-
-    @Override
-    public String localRepository(ExecutorRequest.Builder request) throws ExecutorException {
-        return executorTool.localRepository(request);
-    }
-
-    @Override
-    public String artifactPath(ExecutorRequest.Builder request, String gav, String repositoryId)
-            throws ExecutorException {
-        return executorTool.artifactPath(request, gav, repositoryId);
-    }
-
-    @Override
-    public String metadataPath(ExecutorRequest.Builder request, String gav, String repositoryId)
-            throws ExecutorException {
-        return executorTool.metadataPath(request, gav, repositoryId);
-    }
-
     protected Executor getExecutor(Mode mode, ExecutorRequest request) throws ExecutorException {
         return switch (mode) {
             case AUTO -> getExecutorByRequest(request);
@@ -111,8 +93,7 @@ public class HelperImpl implements ExecutorHelper {
     }
 
     private Executor getExecutorByRequest(ExecutorRequest request) {
-        if (request.environmentVariables().orElse(Collections.emptyMap()).isEmpty()
-                && request.jvmArguments().orElse(Collections.emptyList()).isEmpty()) {
+        if (request.environmentVariables().isEmpty() && request.jvmArguments().isEmpty()) {
             return getExecutor(Mode.EMBEDDED, request);
         } else {
             return getExecutor(Mode.FORKED, request);

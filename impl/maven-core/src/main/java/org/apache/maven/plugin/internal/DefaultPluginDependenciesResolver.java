@@ -30,6 +30,9 @@ import java.util.stream.Stream;
 
 import org.apache.maven.RepositoryUtils;
 import org.apache.maven.api.DependencyScope;
+import org.apache.maven.impl.InternalSession;
+import org.apache.maven.impl.RequestTraceHelper;
+import org.apache.maven.impl.resolver.RelocatedArtifact;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.plugin.PluginResolutionException;
@@ -69,7 +72,7 @@ import org.slf4j.LoggerFactory;
 @Named
 @Singleton
 public class DefaultPluginDependenciesResolver implements PluginDependenciesResolver {
-    private static final String REPOSITORY_CONTEXT = "plugin";
+    private static final String REPOSITORY_CONTEXT = org.apache.maven.api.services.RequestTrace.CONTEXT_PLUGIN;
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
 
@@ -94,6 +97,7 @@ public class DefaultPluginDependenciesResolver implements PluginDependenciesReso
                 session.getArtifactTypeRegistry().get("maven-plugin"));
     }
 
+    @Override
     public Artifact resolve(Plugin plugin, List<RemoteRepository> repositories, RepositorySystemSession session)
             throws PluginResolutionException {
         RequestTrace trace = RequestTrace.newChild(null, plugin);
@@ -117,9 +121,7 @@ public class DefaultPluginDependenciesResolver implements PluginDependenciesReso
 
             if (logger.isWarnEnabled() && !result.getRelocations().isEmpty()) {
                 String message =
-                        pluginArtifact instanceof org.apache.maven.internal.impl.resolver.RelocatedArtifact relocated
-                                ? ": " + relocated.getMessage()
-                                : "";
+                        pluginArtifact instanceof RelocatedArtifact relocated ? ": " + relocated.getMessage() : "";
                 logger.warn(
                         "The artifact {} has been relocated to {}{}",
                         result.getRelocations().get(0),
@@ -157,9 +159,41 @@ public class DefaultPluginDependenciesResolver implements PluginDependenciesReso
             List<RemoteRepository> repositories,
             RepositorySystemSession session)
             throws PluginResolutionException {
-        return resolveInternal(plugin, null /* pluginArtifact */, dependencyFilter, repositories, session);
+        RequestTrace trace = RequestTrace.newChild(null, plugin);
+
+        Artifact pluginArtifact = toArtifact(plugin, session);
+
+        try {
+            DefaultRepositorySystemSession pluginSession = new DefaultRepositorySystemSession(session);
+            pluginSession.setArtifactDescriptorPolicy(new SimpleArtifactDescriptorPolicy(true, false));
+
+            ArtifactDescriptorRequest request =
+                    new ArtifactDescriptorRequest(pluginArtifact, repositories, REPOSITORY_CONTEXT);
+            request.setTrace(trace);
+            ArtifactDescriptorResult result = repoSystem.readArtifactDescriptor(pluginSession, request);
+
+            for (MavenPluginDependenciesValidator dependenciesValidator : dependenciesValidators) {
+                dependenciesValidator.validate(session, pluginArtifact, result);
+            }
+
+            pluginArtifact = result.getArtifact();
+
+            if (logger.isWarnEnabled() && !result.getRelocations().isEmpty()) {
+                String message =
+                        pluginArtifact instanceof RelocatedArtifact relocated ? ": " + relocated.getMessage() : "";
+                logger.warn(
+                        "The extension {} has been relocated to {}{}",
+                        result.getRelocations().get(0),
+                        pluginArtifact,
+                        message);
+            }
+            return resolveInternal(plugin, pluginArtifact, dependencyFilter, repositories, session);
+        } catch (ArtifactDescriptorException e) {
+            throw new PluginResolutionException(plugin, e.getResult().getExceptions(), e);
+        }
     }
 
+    @Override
     public DependencyResult resolvePlugin(
             Plugin plugin,
             Artifact pluginArtifact,
@@ -170,6 +204,7 @@ public class DefaultPluginDependenciesResolver implements PluginDependenciesReso
         return resolveInternal(plugin, pluginArtifact, dependencyFilter, repositories, session);
     }
 
+    @Override
     public DependencyNode resolve(
             Plugin plugin,
             Artifact pluginArtifact,
@@ -188,7 +223,8 @@ public class DefaultPluginDependenciesResolver implements PluginDependenciesReso
             List<RemoteRepository> repositories,
             RepositorySystemSession session)
             throws PluginResolutionException {
-        RequestTrace trace = RequestTrace.newChild(null, plugin);
+        InternalSession iSession = InternalSession.from(session);
+        RequestTraceHelper.ResolverTrace trace = RequestTraceHelper.enter(iSession, plugin.getDelegate());
 
         if (pluginArtifact == null) {
             pluginArtifact = toArtifact(plugin, session);
@@ -218,9 +254,9 @@ public class DefaultPluginDependenciesResolver implements PluginDependenciesReso
             }
 
             DependencyRequest depRequest = new DependencyRequest(request, resolutionFilter);
-            depRequest.setTrace(trace);
+            depRequest.setTrace(trace.trace());
 
-            request.setTrace(RequestTrace.newChild(trace, depRequest));
+            request.setTrace(RequestTrace.newChild(trace.trace(), depRequest));
 
             node = repoSystem.collectDependencies(pluginSession, request).getRoot();
 
@@ -240,6 +276,8 @@ public class DefaultPluginDependenciesResolver implements PluginDependenciesReso
                                     .flatMap(r -> r.getExceptions().stream()))
                     .collect(Collectors.toList());
             throw new PluginResolutionException(plugin, exceptions, e);
+        } finally {
+            RequestTraceHelper.exit(trace);
         }
     }
 }

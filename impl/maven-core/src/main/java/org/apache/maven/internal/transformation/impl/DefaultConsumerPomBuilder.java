@@ -21,26 +21,32 @@ package org.apache.maven.internal.transformation.impl;
 import javax.inject.Inject;
 import javax.inject.Named;
 
-import java.nio.file.Path;
-import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.apache.maven.api.ArtifactCoordinates;
+import org.apache.maven.api.DependencyScope;
+import org.apache.maven.api.Node;
+import org.apache.maven.api.PathScope;
 import org.apache.maven.api.SessionData;
+import org.apache.maven.api.feature.Features;
 import org.apache.maven.api.model.Dependency;
-import org.apache.maven.api.model.DependencyManagement;
 import org.apache.maven.api.model.DistributionManagement;
 import org.apache.maven.api.model.Model;
 import org.apache.maven.api.model.ModelBase;
 import org.apache.maven.api.model.Profile;
 import org.apache.maven.api.model.Repository;
+import org.apache.maven.api.model.Scm;
 import org.apache.maven.api.services.ModelBuilder;
 import org.apache.maven.api.services.ModelBuilderException;
 import org.apache.maven.api.services.ModelBuilderRequest;
 import org.apache.maven.api.services.ModelBuilderResult;
 import org.apache.maven.api.services.ModelSource;
 import org.apache.maven.api.services.model.LifecycleBindingsInjector;
-import org.apache.maven.internal.impl.InternalSession;
+import org.apache.maven.impl.InternalSession;
 import org.apache.maven.model.v4.MavenModelVersion;
 import org.apache.maven.project.MavenProject;
 import org.eclipse.aether.RepositorySystemSession;
@@ -48,7 +54,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @Named
-class DefaultConsumerPomBuilder implements ConsumerPomBuilder {
+class DefaultConsumerPomBuilder implements PomBuilder {
     private static final String BOM_PACKAGING = "bom";
 
     public static final String POM_PACKAGING = "pom";
@@ -64,38 +70,165 @@ class DefaultConsumerPomBuilder implements ConsumerPomBuilder {
     }
 
     @Override
-    public Model build(RepositorySystemSession session, MavenProject project, Path src) throws ModelBuilderException {
+    public Model build(RepositorySystemSession session, MavenProject project, ModelSource src)
+            throws ModelBuilderException {
         Model model = project.getModel().getDelegate();
+        boolean flattenEnabled = Features.consumerPomFlatten(session.getConfigProperties());
+
+        // Check if consumer POM flattening is disabled
+        if (!flattenEnabled) {
+            // When flattening is disabled, treat non-POM projects like parent POMs
+            // Apply only basic transformations without flattening dependency management
+            return buildPom(session, project, src);
+        }
+        // Default behavior: flatten the consumer POM
         String packaging = model.getPackaging();
         String originalPackaging = project.getOriginalModel().getPackaging();
-        if (POM_PACKAGING.equals(packaging) && !BOM_PACKAGING.equals(originalPackaging)) {
-            return buildPom(session, project, src);
+        if (POM_PACKAGING.equals(packaging)) {
+            if (BOM_PACKAGING.equals(originalPackaging)) {
+                return buildBom(session, project, src);
+            } else {
+                return buildPom(session, project, src);
+            }
         } else {
             return buildNonPom(session, project, src);
         }
     }
 
-    protected Model buildPom(RepositorySystemSession session, MavenProject project, Path src)
+    protected Model buildPom(RepositorySystemSession session, MavenProject project, ModelSource src)
             throws ModelBuilderException {
-        ModelBuilderResult result = buildModel(session, project, src);
+        ModelBuilderResult result = buildModel(session, src);
         Model model = result.getRawModel();
-        return transform(model, project);
+        return transformPom(model, project);
     }
 
-    protected Model buildNonPom(RepositorySystemSession session, MavenProject project, Path src)
+    protected Model buildBom(RepositorySystemSession session, MavenProject project, ModelSource src)
             throws ModelBuilderException {
-        ModelBuilderResult result = buildModel(session, project, src);
+        ModelBuilderResult result = buildModel(session, src);
         Model model = result.getEffectiveModel();
-        return transform(model, project);
+        return transformBom(model, project);
     }
 
-    private ModelBuilderResult buildModel(RepositorySystemSession session, MavenProject project, Path src)
+    protected Model buildNonPom(RepositorySystemSession session, MavenProject project, ModelSource src)
+            throws ModelBuilderException {
+        Model model = buildEffectiveModel(session, src);
+        return transformNonPom(model, project);
+    }
+
+    private Model buildEffectiveModel(RepositorySystemSession session, ModelSource src) throws ModelBuilderException {
+        InternalSession iSession = InternalSession.from(session);
+        ModelBuilderResult result = buildModel(session, src);
+        Model model = result.getEffectiveModel();
+
+        if (model.getDependencyManagement() != null
+                && !model.getDependencyManagement().getDependencies().isEmpty()) {
+            ArtifactCoordinates artifact = iSession.createArtifactCoordinates(
+                    model.getGroupId(), model.getArtifactId(), model.getVersion(), null);
+            Node node = iSession.collectDependencies(
+                    iSession.createDependencyCoordinates(artifact), PathScope.MAIN_RUNTIME);
+
+            Map<String, Node> nodes = node.stream()
+                    .collect(Collectors.toMap(n -> getDependencyKey(n.getDependency()), Function.identity()));
+            Map<String, Dependency> directDependencies = model.getDependencies().stream()
+                    .filter(dependency -> !"import".equals(dependency.getScope()))
+                    .collect(Collectors.toMap(
+                            DefaultConsumerPomBuilder::getDependencyKey,
+                            Function.identity(),
+                            this::merge,
+                            LinkedHashMap::new));
+            Map<String, Dependency> managedDependencies = model.getDependencyManagement().getDependencies().stream()
+                    .filter(dependency ->
+                            nodes.containsKey(getDependencyKey(dependency)) && !"import".equals(dependency.getScope()))
+                    .collect(Collectors.toMap(
+                            DefaultConsumerPomBuilder::getDependencyKey,
+                            Function.identity(),
+                            this::merge,
+                            LinkedHashMap::new));
+
+            // for each managed dep in the model:
+            // * if there is no corresponding node in the tree, discard the managed dep
+            // * if there's a direct dependency, apply the managed dependency to it and discard the managed dep
+            // * else keep the managed dep
+            managedDependencies.keySet().retainAll(nodes.keySet());
+
+            directDependencies.replaceAll((key, dependency) -> {
+                var managedDependency = managedDependencies.get(key);
+                if (managedDependency != null) {
+                    if (dependency.getVersion() == null && managedDependency.getVersion() != null) {
+                        dependency = dependency.withVersion(managedDependency.getVersion());
+                    }
+                    if (dependency.getScope() == null && managedDependency.getScope() != null) {
+                        dependency = dependency.withScope(managedDependency.getScope());
+                    }
+                    if (dependency.getOptional() == null && managedDependency.getOptional() != null) {
+                        dependency = dependency.withOptional(managedDependency.getOptional());
+                    }
+                    if (dependency.getExclusions().isEmpty()
+                            && !managedDependency.getExclusions().isEmpty()) {
+                        dependency = dependency.withExclusions(managedDependency.getExclusions());
+                    }
+                }
+                return dependency;
+            });
+            // Only keep transitive scopes (null/empty => COMPILE)
+            directDependencies.values().removeIf(DefaultConsumerPomBuilder::hasDependencyScope);
+            managedDependencies.keySet().removeAll(directDependencies.keySet());
+
+            model = model.withDependencyManagement(
+                            managedDependencies.isEmpty()
+                                    ? null
+                                    : model.getDependencyManagement().withDependencies(managedDependencies.values()))
+                    .withDependencies(directDependencies.isEmpty() ? null : directDependencies.values());
+        } else {
+            // Even without dependencyManagement, filter direct dependencies to compile/runtime only
+            Map<String, Dependency> directDependencies = model.getDependencies().stream()
+                    .filter(dependency -> !"import".equals(dependency.getScope()))
+                    .collect(Collectors.toMap(
+                            DefaultConsumerPomBuilder::getDependencyKey,
+                            Function.identity(),
+                            this::merge,
+                            LinkedHashMap::new));
+            // Only keep transitive scopes
+            directDependencies.values().removeIf(DefaultConsumerPomBuilder::hasDependencyScope);
+            model = model.withDependencies(directDependencies.isEmpty() ? null : directDependencies.values());
+        }
+
+        return model;
+    }
+
+    private static boolean hasDependencyScope(Dependency dependency) {
+        String scopeId = dependency.getScope();
+        DependencyScope scope;
+        if (scopeId == null || scopeId.isEmpty()) {
+            scope = DependencyScope.COMPILE;
+        } else {
+            scope = DependencyScope.forId(scopeId);
+        }
+        return scope == null || !scope.isTransitive();
+    }
+
+    private Dependency merge(Dependency dep1, Dependency dep2) {
+        throw new IllegalArgumentException("Duplicate dependency: " + getDependencyKey(dep1));
+    }
+
+    private static String getDependencyKey(org.apache.maven.api.Dependency dependency) {
+        return dependency.getGroupId() + ":" + dependency.getArtifactId() + ":"
+                + dependency.getType().id() + ":" + dependency.getClassifier();
+    }
+
+    private static String getDependencyKey(Dependency dependency) {
+        return dependency.getGroupId() + ":" + dependency.getArtifactId() + ":"
+                + (dependency.getType() != null ? dependency.getType() : "jar") + ":"
+                + (dependency.getClassifier() != null ? dependency.getClassifier() : "");
+    }
+
+    private ModelBuilderResult buildModel(RepositorySystemSession session, ModelSource src)
             throws ModelBuilderException {
         InternalSession iSession = InternalSession.from(session);
         ModelBuilderRequest.ModelBuilderRequestBuilder request = ModelBuilderRequest.builder();
         request.requestType(ModelBuilderRequest.RequestType.BUILD_CONSUMER);
         request.session(iSession);
-        request.source(ModelSource.fromPath(src));
+        request.source(src);
         request.locationTracking(false);
         request.systemProperties(session.getSystemProperties());
         request.userProperties(session.getUserProperties());
@@ -105,62 +238,73 @@ class DefaultConsumerPomBuilder implements ConsumerPomBuilder {
         return mbSession.build(request.build());
     }
 
-    static Model transform(Model model, MavenProject project) {
-        String packaging = model.getPackaging();
+    static Model transformNonPom(Model model, MavenProject project) {
         boolean preserveModelVersion = model.isPreserveModelVersion();
-        if (POM_PACKAGING.equals(packaging)) {
-            // raw to consumer transform
-            model = model.withRoot(false).withModules(null).withSubprojects(null);
-            if (model.getParent() != null) {
-                model = model.withParent(model.getParent().withRelativePath(null));
-            }
 
-            if (!preserveModelVersion) {
-                model = model.withPreserveModelVersion(false);
-                String modelVersion = new MavenModelVersion().getModelVersion(model);
-                model = model.withModelVersion(modelVersion);
-            }
-        } else if (BOM_PACKAGING.equals(packaging)) {
-            DependencyManagement dependencyManagement =
-                    project.getOriginalModel().getDependencyManagement().getDelegate();
-            List<Dependency> dependencies = new ArrayList<>();
-            String version = model.getVersion();
+        Model.Builder builder = prune(
+                        Model.newBuilder(model, true)
+                                .preserveModelVersion(false)
+                                .root(false)
+                                .parent(null)
+                                .mixins(null)
+                                .build(null),
+                        model)
+                .mailingLists(null)
+                .issueManagement(null)
+                .scm(
+                        model.getScm() != null
+                                ? Scm.newBuilder(model.getScm(), true)
+                                        .childScmConnectionInheritAppendPath(null)
+                                        .childScmUrlInheritAppendPath(null)
+                                        .childScmDeveloperConnectionInheritAppendPath(null)
+                                        .build()
+                                : null);
+        builder.profiles(prune(model.getProfiles()));
 
-            dependencyManagement
-                    .getDependencies()
-                    .forEach((dependency) -> dependencies.add(dependency.withVersion(version)));
-            Model.Builder builder = prune(
-                    Model.newBuilder(model, true)
-                            .preserveModelVersion(false)
-                            .root(false)
-                            .parent(null)
-                            .dependencyManagement(dependencyManagement.withDependencies(dependencies))
-                            .build(null),
-                    model);
-            builder.packaging(POM_PACKAGING);
-            builder.profiles(prune(model.getProfiles()));
+        model = builder.build();
+        String modelVersion = new MavenModelVersion().getModelVersion(model);
+        if (!ModelBuilder.MODEL_VERSION_4_0_0.equals(modelVersion) && !preserveModelVersion) {
+            warnNotDowngraded(project);
+        }
+        model = model.withModelVersion(modelVersion);
 
-            model = builder.build();
+        return model;
+    }
+
+    static Model transformBom(Model model, MavenProject project) {
+        boolean preserveModelVersion = model.isPreserveModelVersion();
+
+        Model.Builder builder = prune(
+                Model.newBuilder(model, true)
+                        .preserveModelVersion(false)
+                        .root(false)
+                        .parent(null)
+                        .build(null),
+                model);
+        builder.packaging(POM_PACKAGING);
+        builder.profiles(prune(model.getProfiles()));
+
+        model = builder.build();
+        String modelVersion = new MavenModelVersion().getModelVersion(model);
+        if (!ModelBuilder.MODEL_VERSION_4_0_0.equals(modelVersion) && !preserveModelVersion) {
+            warnNotDowngraded(project);
+        }
+        model = model.withModelVersion(modelVersion);
+        return model;
+    }
+
+    static Model transformPom(Model model, MavenProject project) {
+        boolean preserveModelVersion = model.isPreserveModelVersion();
+
+        // raw to consumer transform
+        model = model.withRoot(false).withModules(null).withSubprojects(null);
+        if (model.getParent() != null) {
+            model = model.withParent(model.getParent().withRelativePath(null));
+        }
+
+        if (!preserveModelVersion) {
+            model = model.withPreserveModelVersion(false);
             String modelVersion = new MavenModelVersion().getModelVersion(model);
-            if (!ModelBuilder.MODEL_VERSION_4_0_0.equals(modelVersion) && !preserveModelVersion) {
-                warnNotDowngraded(project);
-            }
-            model = model.withModelVersion(modelVersion);
-        } else {
-            Model.Builder builder = prune(
-                    Model.newBuilder(model, true)
-                            .preserveModelVersion(false)
-                            .root(false)
-                            .parent(null)
-                            .build(null),
-                    model);
-            builder.profiles(prune(model.getProfiles()));
-
-            model = builder.build();
-            String modelVersion = new MavenModelVersion().getModelVersion(model);
-            if (!ModelBuilder.MODEL_VERSION_4_0_0.equals(modelVersion) && !preserveModelVersion) {
-                warnNotDowngraded(project);
-            }
             model = model.withModelVersion(modelVersion);
         }
         return model;
@@ -210,8 +354,8 @@ class DefaultConsumerPomBuilder implements ConsumerPomBuilder {
                     .build());
         }
         // only keep repositories other than 'central'
-        builder.pluginRepositories(pruneRepositories(model.getPluginRepositories()));
         builder.repositories(pruneRepositories(model.getRepositories()));
+        builder.pluginRepositories(null);
         return builder;
     }
 

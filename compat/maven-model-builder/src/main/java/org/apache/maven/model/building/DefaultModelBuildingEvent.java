@@ -23,12 +23,12 @@ import org.apache.maven.model.Model;
 /**
  * Holds data relevant for a model building event.
  *
- * @deprecated use {@link org.apache.maven.api.services.ModelBuilder} instead
+ * @deprecated use {@code org.apache.maven.api.services.ModelBuilder} instead
  */
 @Deprecated(since = "4.0.0")
 class DefaultModelBuildingEvent implements ModelBuildingEvent {
 
-    private Model model;
+    private final Model model;
 
     private final ModelBuildingRequest request;
 

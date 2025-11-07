@@ -59,6 +59,7 @@ public class StringSearchModelInterpolator extends AbstractStringBasedModelInter
         super(pathTranslator);
     }
 
+    @Override
     public Model interpolate(Model model, File projectDir, ProjectBuilderConfiguration config, boolean debugEnabled)
             throws ModelInterpolationException {
         interpolateObject(model, model, projectDir, config, debugEnabled);
@@ -86,6 +87,7 @@ public class StringSearchModelInterpolator extends AbstractStringBasedModelInter
         }
     }
 
+    @Override
     protected Interpolator createInterpolator() {
         StringSearchInterpolator interpolator = new StringSearchInterpolator();
         interpolator.setCacheAnswers(true);
@@ -120,6 +122,7 @@ public class StringSearchModelInterpolator extends AbstractStringBasedModelInter
             this.logger = logger;
         }
 
+        @Override
         public ModelInterpolationException run() {
             while (!interpolationTargets.isEmpty()) {
                 Object obj = interpolationTargets.removeFirst();
@@ -261,7 +264,9 @@ public class StringSearchModelInterpolator extends AbstractStringBasedModelInter
 
         private boolean isQualifiedForInterpolation(Class<?> cls) {
             return !cls.getPackage().getName().startsWith("java")
-                    && !cls.getPackage().getName().startsWith("sun.nio.fs");
+                    && !cls.getPackage().getName().startsWith("sun.nio.fs")
+                    // org.apache.maven.api.model.InputLocation can be self-referencing
+                    && !cls.getName().equals("org.apache.maven.api.model.InputLocation");
         }
 
         private boolean isQualifiedForInterpolation(Field field, Class<?> fieldType) {
@@ -272,11 +277,6 @@ public class StringSearchModelInterpolator extends AbstractStringBasedModelInter
             if (PRIMITIVE_BY_CLASS.get(fieldType)) {
                 return false;
             }
-
-            //            if ( fieldType.isPrimitive() )
-            //            {
-            //                return false;
-            //            }
 
             return !"parent".equals(field.getName());
         }

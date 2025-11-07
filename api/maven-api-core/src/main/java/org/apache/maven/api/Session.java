@@ -34,12 +34,10 @@ import org.apache.maven.api.services.ArtifactCoordinatesFactory;
 import org.apache.maven.api.services.DependencyCoordinatesFactory;
 import org.apache.maven.api.services.VersionResolverException;
 import org.apache.maven.api.settings.Settings;
+import org.apache.maven.api.toolchain.ToolchainModel;
 
 /**
  * The session to install / deploy / resolve artifacts and dependencies.
- *
- * TODO: add request trace so that requests can be linked together and through the resolver
- * TODO: add a Request interface holding session + parent request
  *
  * @since 4.0.0
  */
@@ -64,6 +62,14 @@ public interface Session extends ProtoSession {
     Settings getSettings();
 
     /**
+     * Retrieves toolchain models that have been explicitly configured.
+     *
+     * @return the toolchain models
+     */
+    @Nonnull
+    Collection<ToolchainModel> getToolchains();
+
+    /**
      * Retrieves the local repository associated with this session.
      *
      * @return the local repository instance
@@ -86,6 +92,15 @@ public interface Session extends ProtoSession {
      */
     @Nonnull
     SessionData getData();
+
+    /**
+     * Default implementation at {@link ProtoSession} level, as the notion of project
+     * does not exist there.
+     */
+    @Nonnull
+    default Map<String, String> getEffectiveProperties() {
+        return getEffectiveProperties(null);
+    }
 
     /**
      * Each invocation computes a new map of effective properties. To be used in interpolation.
@@ -729,6 +744,23 @@ public interface Session extends ProtoSession {
             throws VersionResolverException;
 
     /**
+     * Resolves the highest available version of a version range.
+     * The returned version is only dependent on the configured repositories and their contents.
+     * The supplied request may also refer to a single concrete version rather than a version range.
+     * In this case though, the result contains simply the (parsed) input version, regardless of the
+     * repositories and their contents.
+     *
+     * @param artifact the artifact for which to resolve the versions
+     * @param repositories the repositories to use, or the session repositories if {@code null}
+     * @return the highest resolved {@code Version}.
+     * @throws org.apache.maven.api.services.VersionRangeResolverException if the resolution failed
+     * @see org.apache.maven.api.services.VersionRangeResolver#resolve(Session, ArtifactCoordinates) (String)
+     */
+    @Nonnull
+    Optional<Version> resolveHighestVersion(@Nonnull ArtifactCoordinates artifact, List<RemoteRepository> repositories)
+            throws VersionResolverException;
+
+    /**
      * Parses the specified version string, for example "1.0".
      * <p>
      * Shortcut for {@code getService(VersionParser.class).parseVersion(...)}.
@@ -810,7 +842,11 @@ public interface Session extends ProtoSession {
     /**
      * Obtain the {@link DependencyScope} from the specified {@code id}.
      * <p>
-     * Shortcut for {@code DependencyScope.forId(...)}.
+     * Shortcut for {@code DependencyScope.forId(...)} with a verification that the given identifier exists.
+     *
+     * @param id the identifier of the scope (case-sensitive)
+     * @return the scope for the given identifier (never null)
+     * @throws IllegalArgumentException if the given identifier is not a known scope
      *
      * @see org.apache.maven.api.DependencyScope#forId(String)
      */

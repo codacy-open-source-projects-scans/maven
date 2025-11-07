@@ -21,6 +21,7 @@ package org.apache.maven.api.services;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Objects;
 
 import org.apache.maven.api.ArtifactCoordinates;
 import org.apache.maven.api.Dependency;
@@ -30,8 +31,9 @@ import org.apache.maven.api.annotations.Experimental;
 import org.apache.maven.api.annotations.Immutable;
 import org.apache.maven.api.annotations.Nonnull;
 import org.apache.maven.api.annotations.NotThreadSafe;
+import org.apache.maven.api.annotations.Nullable;
 
-import static org.apache.maven.api.services.BaseRequest.nonNull;
+import static java.util.Objects.requireNonNull;
 
 /**
  *
@@ -58,7 +60,7 @@ public interface DependencyCoordinatesFactoryRequest extends ArtifactCoordinates
             String extension,
             String type) {
         return DependencyCoordinatesFactoryRequest.builder()
-                .session(nonNull(session, "session cannot be null"))
+                .session(requireNonNull(session, "session cannot be null"))
                 .groupId(groupId)
                 .artifactId(artifactId)
                 .version(version)
@@ -72,10 +74,11 @@ public interface DependencyCoordinatesFactoryRequest extends ArtifactCoordinates
     static DependencyCoordinatesFactoryRequest build(
             @Nonnull Session session, @Nonnull ArtifactCoordinates coordinates) {
         return builder()
-                .session(nonNull(session, "session cannot be null"))
-                .groupId(nonNull(coordinates, "coordinates cannot be null").getGroupId())
+                .session(requireNonNull(session, "session cannot be null"))
+                .groupId(requireNonNull(coordinates, "coordinates cannot be null")
+                        .getGroupId())
                 .artifactId(coordinates.getArtifactId())
-                .version(coordinates.getVersionConstraint().asString())
+                .version(coordinates.getVersionConstraint().toString())
                 .classifier(coordinates.getClassifier())
                 .extension(coordinates.getExtension())
                 .build();
@@ -84,10 +87,10 @@ public interface DependencyCoordinatesFactoryRequest extends ArtifactCoordinates
     @Nonnull
     static DependencyCoordinatesFactoryRequest build(@Nonnull Session session, @Nonnull Dependency dependency) {
         return builder()
-                .session(nonNull(session, "session cannot be null"))
-                .groupId(nonNull(dependency, "dependency").getGroupId())
+                .session(requireNonNull(session, "session cannot be null"))
+                .groupId(requireNonNull(dependency, "dependency").getGroupId())
                 .artifactId(dependency.getArtifactId())
-                .version(dependency.getVersion().asString())
+                .version(dependency.getVersion().toString())
                 .classifier(dependency.getClassifier())
                 .extension(dependency.getExtension())
                 .type(dependency.getType().id())
@@ -104,6 +107,7 @@ public interface DependencyCoordinatesFactoryRequest extends ArtifactCoordinates
     @NotThreadSafe
     class DependencyCoordinatesFactoryRequestBuilder {
         private Session session;
+        private RequestTrace trace;
         private String groupId;
         private String artifactId;
         private String version;
@@ -119,6 +123,11 @@ public interface DependencyCoordinatesFactoryRequest extends ArtifactCoordinates
 
         public DependencyCoordinatesFactoryRequestBuilder session(Session session) {
             this.session = session;
+            return this;
+        }
+
+        public DependencyCoordinatesFactoryRequestBuilder trace(RequestTrace trace) {
+            this.trace = trace;
             return this;
         }
 
@@ -190,6 +199,7 @@ public interface DependencyCoordinatesFactoryRequest extends ArtifactCoordinates
         public DependencyCoordinatesFactoryRequest build() {
             return new DefaultDependencyCoordinatesFactoryRequest(
                     session,
+                    trace,
                     groupId,
                     artifactId,
                     version,
@@ -218,6 +228,7 @@ public interface DependencyCoordinatesFactoryRequest extends ArtifactCoordinates
             @SuppressWarnings("checkstyle:ParameterNumber")
             private DefaultDependencyCoordinatesFactoryRequest(
                     @Nonnull Session session,
+                    @Nullable RequestTrace trace,
                     String groupId,
                     String artifactId,
                     String version,
@@ -228,7 +239,7 @@ public interface DependencyCoordinatesFactoryRequest extends ArtifactCoordinates
                     String scope,
                     boolean optional,
                     Collection<Exclusion> exclusions) {
-                super(session);
+                super(session, trace);
                 this.groupId = groupId;
                 this.artifactId = artifactId;
                 this.version = version;
@@ -271,6 +282,7 @@ public interface DependencyCoordinatesFactoryRequest extends ArtifactCoordinates
                 return type;
             }
 
+            @Override
             public String getCoordinatesString() {
                 return coordinateString;
             }
@@ -289,6 +301,51 @@ public interface DependencyCoordinatesFactoryRequest extends ArtifactCoordinates
             @Override
             public Collection<Exclusion> getExclusions() {
                 return exclusions;
+            }
+
+            @Override
+            public boolean equals(Object o) {
+                return o instanceof DefaultDependencyCoordinatesFactoryRequest that
+                        && optional == that.optional
+                        && Objects.equals(groupId, that.groupId)
+                        && Objects.equals(artifactId, that.artifactId)
+                        && Objects.equals(version, that.version)
+                        && Objects.equals(classifier, that.classifier)
+                        && Objects.equals(extension, that.extension)
+                        && Objects.equals(type, that.type)
+                        && Objects.equals(coordinateString, that.coordinateString)
+                        && Objects.equals(scope, that.scope)
+                        && Objects.equals(exclusions, that.exclusions);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(
+                        groupId,
+                        artifactId,
+                        version,
+                        classifier,
+                        extension,
+                        type,
+                        coordinateString,
+                        scope,
+                        optional,
+                        exclusions);
+            }
+
+            @Override
+            public String toString() {
+                return "DependencyCoordinatesFactoryRequest[" + "groupId='"
+                        + groupId + '\'' + ", artifactId='"
+                        + artifactId + '\'' + ", version='"
+                        + version + '\'' + ", classifier='"
+                        + classifier + '\'' + ", extension='"
+                        + extension + '\'' + ", type='"
+                        + type + '\'' + ", coordinateString='"
+                        + coordinateString + '\'' + ", scope='"
+                        + scope + '\'' + ", optional="
+                        + optional + ", exclusions="
+                        + exclusions + ']';
             }
         }
     }

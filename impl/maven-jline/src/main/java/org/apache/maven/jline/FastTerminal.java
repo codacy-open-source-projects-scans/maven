@@ -24,9 +24,7 @@ import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.nio.charset.Charset;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.function.IntSupplier;
@@ -46,21 +44,22 @@ import org.jline.utils.NonBlockingReader;
 
 public class FastTerminal implements TerminalExt {
 
-    final Future<Terminal> terminal;
+    private final CompletableFuture<Terminal> terminal;
 
     public FastTerminal(Callable<Terminal> builder, Consumer<Terminal> consumer) {
-        ExecutorService executor = Executors.newSingleThreadExecutor();
-        terminal = executor.submit(() -> {
-            try {
-                Terminal terminal = builder.call();
-                consumer.accept(terminal);
-                return terminal;
-            } catch (Exception e) {
-                throw new MavenException(e);
-            } finally {
-                executor.shutdown();
-            }
-        });
+        this.terminal = new CompletableFuture<>();
+        new Thread(
+                        () -> {
+                            try {
+                                Terminal term = builder.call();
+                                consumer.accept(term);
+                                terminal.complete(term);
+                            } catch (Exception e) {
+                                terminal.completeExceptionally(new MavenException(e));
+                            }
+                        },
+                        "fast-terminal-thread")
+                .start();
     }
 
     public TerminalExt getTerminal() {
@@ -227,6 +226,11 @@ public class FastTerminal implements TerminalExt {
     }
 
     @Override
+    public MouseTracking getCurrentMouseTracking() {
+        return getTerminal().getCurrentMouseTracking();
+    }
+
+    @Override
     public boolean trackMouse(MouseTracking mouseTracking) {
         return getTerminal().trackMouse(mouseTracking);
     }
@@ -239,6 +243,16 @@ public class FastTerminal implements TerminalExt {
     @Override
     public MouseEvent readMouseEvent(IntSupplier intSupplier) {
         return getTerminal().readMouseEvent(intSupplier);
+    }
+
+    @Override
+    public MouseEvent readMouseEvent(String prefix) {
+        return getTerminal().readMouseEvent(prefix);
+    }
+
+    @Override
+    public MouseEvent readMouseEvent(IntSupplier reader, String prefix) {
+        return getTerminal().readMouseEvent(reader, prefix);
     }
 
     @Override

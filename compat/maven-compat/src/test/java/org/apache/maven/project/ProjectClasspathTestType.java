@@ -22,7 +22,7 @@ import java.io.File;
 import java.lang.reflect.Field;
 
 import org.apache.maven.artifact.Artifact;
-import org.apache.maven.internal.impl.resolver.DefaultArtifactDescriptorReader;
+import org.apache.maven.impl.resolver.DefaultArtifactDescriptorReader;
 import org.eclipse.aether.impl.ArtifactDescriptorReader;
 import org.eclipse.aether.impl.ArtifactResolver;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 @Deprecated
 class ProjectClasspathTestType extends AbstractMavenProjectTestCase {
-    static final String dir = "projects/scope/";
+    static final String DIR = "projects/scope/";
 
     @Override
     @BeforeEach
@@ -53,7 +53,7 @@ class ProjectClasspathTestType extends AbstractMavenProjectTestCase {
 
     @Test
     void testProjectClasspath() throws Exception {
-        File f = getFileForClasspathResource(dir + "project-with-scoped-dependencies.xml");
+        File f = getFileForClasspathResource(DIR + "project-with-scoped-dependencies.xml");
 
         MavenProject project = getProjectWithDependencies(f);
 

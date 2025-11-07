@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
 
@@ -33,11 +34,15 @@ import org.apache.maven.api.PathType;
 import org.apache.maven.api.Project;
 import org.apache.maven.api.RemoteRepository;
 import org.apache.maven.api.Session;
+import org.apache.maven.api.SourceRoot;
+import org.apache.maven.api.Version;
 import org.apache.maven.api.annotations.Experimental;
 import org.apache.maven.api.annotations.Immutable;
 import org.apache.maven.api.annotations.Nonnull;
 import org.apache.maven.api.annotations.NotThreadSafe;
 import org.apache.maven.api.annotations.Nullable;
+
+import static java.util.Objects.requireNonNull;
 
 /**
  * A request to collect the transitive dependencies and to build a dependency graph from them. There are three ways to
@@ -50,16 +55,13 @@ import org.apache.maven.api.annotations.Nullable;
  */
 @Experimental
 @Immutable
-public interface DependencyResolverRequest {
+public interface DependencyResolverRequest extends RepositoryAwareRequest {
 
     enum RequestType {
         COLLECT,
         FLATTEN,
         RESOLVE
     }
-
-    @Nonnull
-    Session getSession();
 
     @Nonnull
     RequestType getRequestType();
@@ -95,8 +97,27 @@ public interface DependencyResolverRequest {
     @Nullable
     Predicate<PathType> getPathTypeFilter();
 
+    /**
+     * Returns the version of the platform where the code will be executed.
+     * It should be the highest value of the {@code <targetVersion>} elements
+     * inside the {@code <source>} elements of a <abbr>POM</abbr> file.
+     *
+     * <h4>Application to Java</h4>
+     * In the context of a Java project, this is the value given to the {@code --release} compiler option.
+     * This value can determine whether a dependency will be placed on the class-path or on the module-path.
+     * For example, if the {@code module-info.class} entry of a <abbr>JAR</abbr> file exists only in the
+     * {@code META-INF/versions/17/} sub-directory, then the default location of that dependency will be
+     * the module-path only if the {@code --release} option is equal or greater than 17.
+     *
+     * <p>If this value is not provided, then the default value in the context of Java projects
+     * is the Java version on which Maven is running, as given by {@link Runtime#version()}.</p>
+     *
+     * @return version of the platform where the code will be executed, or {@code null} for default
+     *
+     * @see SourceRoot#targetVersion()
+     */
     @Nullable
-    List<RemoteRepository> getRepositories();
+    Version getTargetVersion();
 
     @Nonnull
     static DependencyResolverRequestBuilder builder() {
@@ -171,6 +192,7 @@ public interface DependencyResolverRequest {
     class DependencyResolverRequestBuilder {
 
         Session session;
+        RequestTrace trace;
         RequestType requestType;
         Project project;
         Artifact rootArtifact;
@@ -180,6 +202,7 @@ public interface DependencyResolverRequest {
         boolean verbose;
         PathScope pathScope;
         Predicate<PathType> pathTypeFilter;
+        Version targetVersion;
         List<RemoteRepository> repositories;
 
         DependencyResolverRequestBuilder() {}
@@ -187,6 +210,12 @@ public interface DependencyResolverRequest {
         @Nonnull
         public DependencyResolverRequestBuilder session(@Nonnull Session session) {
             this.session = session;
+            return this;
+        }
+
+        @Nonnull
+        public DependencyResolverRequestBuilder trace(RequestTrace trace) {
+            this.trace = trace;
             return this;
         }
 
@@ -338,6 +367,18 @@ public interface DependencyResolverRequest {
             return pathTypeFilter(desiredTypes::contains);
         }
 
+        /**
+         * Sets the version of the platform where the code will be executed.
+         *
+         * @param target version of the platform where the code will be executed, or {@code null} for the default
+         * @return {@code this} for method call chaining
+         */
+        @Nonnull
+        public DependencyResolverRequestBuilder targetVersion(@Nullable Version target) {
+            targetVersion = target;
+            return this;
+        }
+
         @Nonnull
         public DependencyResolverRequestBuilder repositories(@Nonnull List<RemoteRepository> repositories) {
             this.repositories = repositories;
@@ -348,6 +389,7 @@ public interface DependencyResolverRequest {
         public DependencyResolverRequest build() {
             return new DefaultDependencyResolverRequest(
                     session,
+                    trace,
                     requestType,
                     project,
                     rootArtifact,
@@ -357,11 +399,37 @@ public interface DependencyResolverRequest {
                     verbose,
                     pathScope,
                     pathTypeFilter,
+                    targetVersion,
                     repositories);
         }
 
         static class DefaultDependencyResolverRequest extends BaseRequest<Session>
                 implements DependencyResolverRequest {
+
+            static final class AlwaysTrueFilter implements Predicate<PathType> {
+                @Override
+                public boolean test(PathType pathType) {
+                    return true;
+                }
+
+                @Override
+                public boolean equals(Object obj) {
+                    return obj instanceof AlwaysTrueFilter;
+                }
+
+                @Override
+                public int hashCode() {
+                    return AlwaysTrueFilter.class.hashCode();
+                }
+
+                @Override
+                public String toString() {
+                    return "AlwaysTrueFilter[]";
+                }
+            }
+
+            private static final Predicate<PathType> DEFAULT_FILTER = new AlwaysTrueFilter();
+
             private final RequestType requestType;
             private final Project project;
             private final Artifact rootArtifact;
@@ -371,6 +439,7 @@ public interface DependencyResolverRequest {
             private final boolean verbose;
             private final PathScope pathScope;
             private final Predicate<PathType> pathTypeFilter;
+            private final Version targetVersion;
             private final List<RemoteRepository> repositories;
 
             /**
@@ -383,6 +452,7 @@ public interface DependencyResolverRequest {
             @SuppressWarnings("checkstyle:ParameterNumber")
             DefaultDependencyResolverRequest(
                     @Nonnull Session session,
+                    @Nullable RequestTrace trace,
                     @Nonnull RequestType requestType,
                     @Nullable Project project,
                     @Nullable Artifact rootArtifact,
@@ -392,19 +462,21 @@ public interface DependencyResolverRequest {
                     boolean verbose,
                     @Nullable PathScope pathScope,
                     @Nullable Predicate<PathType> pathTypeFilter,
+                    @Nullable Version targetVersion,
                     @Nullable List<RemoteRepository> repositories) {
-                super(session);
-                this.requestType = nonNull(requestType, "requestType cannot be null");
+                super(session, trace);
+                this.requestType = requireNonNull(requestType, "requestType cannot be null");
                 this.project = project;
                 this.rootArtifact = rootArtifact;
                 this.root = root;
-                this.dependencies = unmodifiable(nonNull(dependencies, "dependencies cannot be null"));
+                this.dependencies = List.copyOf(requireNonNull(dependencies, "dependencies cannot be null"));
                 this.managedDependencies =
-                        unmodifiable(nonNull(managedDependencies, "managedDependencies cannot be null"));
+                        List.copyOf(requireNonNull(managedDependencies, "managedDependencies cannot be null"));
                 this.verbose = verbose;
-                this.pathScope = nonNull(pathScope, "pathScope cannot be null");
-                this.pathTypeFilter = (pathTypeFilter != null) ? pathTypeFilter : (t) -> true;
-                this.repositories = repositories;
+                this.pathScope = requireNonNull(pathScope, "pathScope cannot be null");
+                this.pathTypeFilter = (pathTypeFilter != null) ? pathTypeFilter : DEFAULT_FILTER;
+                this.targetVersion = targetVersion;
+                this.repositories = validate(repositories);
                 if (verbose && requestType != RequestType.COLLECT) {
                     throw new IllegalArgumentException("verbose cannot only be true when collecting dependencies");
                 }
@@ -462,14 +534,61 @@ public interface DependencyResolverRequest {
             }
 
             @Override
+            public Version getTargetVersion() {
+                return targetVersion;
+            }
+
+            @Override
             public List<RemoteRepository> getRepositories() {
                 return repositories;
             }
 
-            @Nonnull
+            @Override
+            public boolean equals(Object o) {
+                return o instanceof DefaultDependencyResolverRequest that
+                        && verbose == that.verbose
+                        && requestType == that.requestType
+                        && Objects.equals(project, that.project)
+                        && Objects.equals(rootArtifact, that.rootArtifact)
+                        && Objects.equals(root, that.root)
+                        && Objects.equals(dependencies, that.dependencies)
+                        && Objects.equals(managedDependencies, that.managedDependencies)
+                        && Objects.equals(pathScope, that.pathScope)
+                        && Objects.equals(pathTypeFilter, that.pathTypeFilter)
+                        && Objects.equals(targetVersion, that.targetVersion)
+                        && Objects.equals(repositories, that.repositories);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(
+                        requestType,
+                        project,
+                        rootArtifact,
+                        root,
+                        dependencies,
+                        managedDependencies,
+                        verbose,
+                        pathScope,
+                        pathTypeFilter,
+                        targetVersion,
+                        repositories);
+            }
+
             @Override
             public String toString() {
-                return getRoot() + " -> " + getDependencies();
+                return "DependencyResolverRequest[" + "requestType="
+                        + requestType + ", project="
+                        + project + ", rootArtifact="
+                        + rootArtifact + ", root="
+                        + root + ", dependencies="
+                        + dependencies + ", managedDependencies="
+                        + managedDependencies + ", verbose="
+                        + verbose + ", pathScope="
+                        + pathScope + ", pathTypeFilter="
+                        + pathTypeFilter + ", targetVersion="
+                        + targetVersion + ", repositories="
+                        + repositories + ']';
             }
         }
     }

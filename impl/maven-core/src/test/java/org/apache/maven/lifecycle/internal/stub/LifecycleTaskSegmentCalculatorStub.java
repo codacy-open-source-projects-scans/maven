@@ -37,16 +37,17 @@ import org.apache.maven.plugin.version.PluginVersionResolutionException;
 /**
  */
 public class LifecycleTaskSegmentCalculatorStub extends DefaultLifecycleTaskSegmentCalculator {
-    public static final String clean = "clean";
+    public static final String CLEAN = "clean";
 
-    public static final String aggr = "aggr";
+    public static final String AGGR = "aggr";
 
-    public static final String install = "install";
+    public static final String INSTALL = "install";
 
     public LifecycleTaskSegmentCalculatorStub() {
         super(null, null);
     }
 
+    @Override
     public List<TaskSegment> calculateTaskSegments(MavenSession session, List<String> tasks)
             throws PluginNotFoundException, PluginResolutionException, PluginDescriptorParsingException,
                     MojoNotFoundException, NoPluginFoundForPrefixException, InvalidPluginDescriptorException,
@@ -56,7 +57,7 @@ public class LifecycleTaskSegmentCalculatorStub extends DefaultLifecycleTaskSegm
         TaskSegment currentSegment = null;
 
         for (String task : tasks) {
-            if (aggr.equals(task)) {
+            if (AGGR.equals(task)) {
                 boolean aggregating = true;
 
                 if (currentSegment == null || currentSegment.isAggregating() != aggregating) {
@@ -78,6 +79,7 @@ public class LifecycleTaskSegmentCalculatorStub extends DefaultLifecycleTaskSegm
         return taskSegments;
     }
 
+    @Override
     public boolean requiresProject(MavenSession session) {
         return true;
     }

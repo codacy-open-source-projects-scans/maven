@@ -46,7 +46,7 @@ class OrganizationTest {
     @Test
     void testEqualsIdentity() {
         Organization thing = new Organization();
-        assertTrue(thing.equals(thing));
+        assertTrue(thing.equals(thing), "Expected " + thing + " to equal " + thing);
     }
 
     @Test
@@ -54,6 +54,7 @@ class OrganizationTest {
         assertNotNull(new Organization().toString());
     }
 
+    @Test
     public void testToStringNotNonsense11() {
         Organization org = new Organization();
         org.setName("Testing Maven Unit");
@@ -62,6 +63,7 @@ class OrganizationTest {
         assertEquals("Organization {name=Testing Maven Unit, url=https://maven.localdomain}", org.toString());
     }
 
+    @Test
     public void testToStringNotNonsense10() {
         Organization org = new Organization();
         org.setName("Testing Maven Unit");
@@ -69,6 +71,7 @@ class OrganizationTest {
         assertEquals("Organization {name=Testing Maven Unit, url=null}", org.toString());
     }
 
+    @Test
     public void testToStringNotNonsense01() {
         Organization org = new Organization();
         org.setUrl("https://maven.localdomain");
@@ -76,6 +79,7 @@ class OrganizationTest {
         assertEquals("Organization {name=null, url=https://maven.localdomain}", org.toString());
     }
 
+    @Test
     public void testToStringNotNonsense00() {
         Organization org = new Organization();
 

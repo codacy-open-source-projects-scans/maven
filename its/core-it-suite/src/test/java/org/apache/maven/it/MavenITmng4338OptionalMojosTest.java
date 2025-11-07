@@ -20,6 +20,7 @@ package org.apache.maven.it;
 
 import java.io.File;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -27,11 +28,8 @@ import org.junit.jupiter.api.Test;
  *
  * @author Benjamin Bentmann
  */
+@Disabled("Bounds: [3.0,4.0.0-alpha-1)")
 public class MavenITmng4338OptionalMojosTest extends AbstractMavenIntegrationTestCase {
-
-    public MavenITmng4338OptionalMojosTest() {
-        super("[3.0,4.0.0-alpha-1)");
-    }
 
     /**
      * Test that the {@code <optional-mojos>} element in custom lifecycle mappings is recognized and does not cause
@@ -43,7 +41,16 @@ public class MavenITmng4338OptionalMojosTest extends AbstractMavenIntegrationTes
     public void testit() throws Exception {
         File testDir = extractResources("/mng-4338");
 
-        Verifier verifier = newVerifier(testDir.getAbsolutePath());
+        // First, build the test plugin
+        Verifier verifier = newVerifier(new File(testDir, "maven-it-plugin-optional-mojos").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Then, run the test project that uses the plugin
+        verifier = newVerifier(testDir.getAbsolutePath());
         verifier.setAutoclean(false);
         verifier.deleteDirectory("target");
         verifier.addCliArgument("validate");

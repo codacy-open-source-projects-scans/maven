@@ -20,8 +20,9 @@ package org.apache.maven.api.services;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 import org.apache.maven.api.ProtoSession;
 import org.apache.maven.api.annotations.Experimental;
@@ -30,17 +31,14 @@ import org.apache.maven.api.annotations.Nonnull;
 import org.apache.maven.api.annotations.NotThreadSafe;
 import org.apache.maven.api.annotations.Nullable;
 
-import static org.apache.maven.api.services.BaseRequest.nonNull;
+import static java.util.Objects.requireNonNull;
 
 /**
  * Collects settings that control the building of effective settings.
  */
 @Experimental
 @Immutable
-public interface SettingsBuilderRequest {
-
-    @Nonnull
-    ProtoSession getSession();
+public interface SettingsBuilderRequest extends Request<ProtoSession> {
 
     /**
      * Gets the installation settings source.
@@ -72,7 +70,7 @@ public interface SettingsBuilderRequest {
      * @return the interpolation source for interpolation
      */
     @Nonnull
-    Optional<Function<String, String>> getInterpolationSource();
+    Optional<UnaryOperator<String>> getInterpolationSource();
 
     @Nonnull
     static SettingsBuilderRequest build(
@@ -85,7 +83,7 @@ public interface SettingsBuilderRequest {
     @Nonnull
     static SettingsBuilderRequest build(
             @Nonnull ProtoSession session, @Nonnull Path installationSettingsPath, @Nonnull Path userSettingsPath) {
-        return build(session, Source.fromPath(installationSettingsPath), null, Source.fromPath(userSettingsPath));
+        return build(session, Sources.fromPath(installationSettingsPath), null, Sources.fromPath(userSettingsPath));
     }
 
     @Nonnull
@@ -95,7 +93,7 @@ public interface SettingsBuilderRequest {
             @Nullable Source projectSettingsSource,
             @Nullable Source userSettingsSource) {
         return builder()
-                .session(nonNull(session, "session cannot be null"))
+                .session(requireNonNull(session, "session cannot be null"))
                 .installationSettingsSource(installationSettingsSource)
                 .projectSettingsSource(projectSettingsSource)
                 .userSettingsSource(userSettingsSource)
@@ -109,18 +107,18 @@ public interface SettingsBuilderRequest {
             @Nullable Path projectSettingsPath,
             @Nullable Path userSettingsPath) {
         return builder()
-                .session(nonNull(session, "session cannot be null"))
+                .session(requireNonNull(session, "session cannot be null"))
                 .installationSettingsSource(
                         installationSettingsPath != null && Files.exists(installationSettingsPath)
-                                ? Source.fromPath(installationSettingsPath)
+                                ? Sources.fromPath(installationSettingsPath)
                                 : null)
                 .projectSettingsSource(
                         projectSettingsPath != null && Files.exists(projectSettingsPath)
-                                ? Source.fromPath(projectSettingsPath)
+                                ? Sources.fromPath(projectSettingsPath)
                                 : null)
                 .userSettingsSource(
                         userSettingsPath != null && Files.exists(userSettingsPath)
-                                ? Source.fromPath(userSettingsPath)
+                                ? Sources.fromPath(userSettingsPath)
                                 : null)
                 .build();
     }
@@ -133,13 +131,19 @@ public interface SettingsBuilderRequest {
     @NotThreadSafe
     class SettingsBuilderRequestBuilder {
         ProtoSession session;
+        RequestTrace trace;
         Source installationSettingsSource;
         Source projectSettingsSource;
         Source userSettingsSource;
-        Function<String, String> interpolationSource;
+        UnaryOperator<String> interpolationSource;
 
         public SettingsBuilderRequestBuilder session(ProtoSession session) {
             this.session = session;
+            return this;
+        }
+
+        public SettingsBuilderRequestBuilder trace(RequestTrace trace) {
+            this.trace = trace;
             return this;
         }
 
@@ -158,7 +162,7 @@ public interface SettingsBuilderRequest {
             return this;
         }
 
-        public SettingsBuilderRequestBuilder interpolationSource(Function<String, String> interpolationSource) {
+        public SettingsBuilderRequestBuilder interpolationSource(UnaryOperator<String> interpolationSource) {
             this.interpolationSource = interpolationSource;
             return this;
         }
@@ -166,6 +170,7 @@ public interface SettingsBuilderRequest {
         public SettingsBuilderRequest build() {
             return new DefaultSettingsBuilderRequest(
                     session,
+                    trace,
                     installationSettingsSource,
                     projectSettingsSource,
                     userSettingsSource,
@@ -177,16 +182,17 @@ public interface SettingsBuilderRequest {
             private final Source installationSettingsSource;
             private final Source projectSettingsSource;
             private final Source userSettingsSource;
-            private final Function<String, String> interpolationSource;
+            private final UnaryOperator<String> interpolationSource;
 
             @SuppressWarnings("checkstyle:ParameterNumber")
             DefaultSettingsBuilderRequest(
                     @Nonnull ProtoSession session,
+                    @Nullable RequestTrace trace,
                     @Nullable Source installationSettingsSource,
                     @Nullable Source projectSettingsSource,
                     @Nullable Source userSettingsSource,
-                    @Nullable Function<String, String> interpolationSource) {
-                super(session);
+                    @Nullable UnaryOperator<String> interpolationSource) {
+                super(session, trace);
                 this.installationSettingsSource = installationSettingsSource;
                 this.projectSettingsSource = projectSettingsSource;
                 this.userSettingsSource = userSettingsSource;
@@ -213,8 +219,32 @@ public interface SettingsBuilderRequest {
 
             @Nonnull
             @Override
-            public Optional<Function<String, String>> getInterpolationSource() {
+            public Optional<UnaryOperator<String>> getInterpolationSource() {
                 return Optional.ofNullable(interpolationSource);
+            }
+
+            @Override
+            public boolean equals(Object o) {
+                return o instanceof DefaultSettingsBuilderRequest that
+                        && Objects.equals(installationSettingsSource, that.installationSettingsSource)
+                        && Objects.equals(projectSettingsSource, that.projectSettingsSource)
+                        && Objects.equals(userSettingsSource, that.userSettingsSource)
+                        && Objects.equals(interpolationSource, that.interpolationSource);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(
+                        installationSettingsSource, projectSettingsSource, userSettingsSource, interpolationSource);
+            }
+
+            @Override
+            public String toString() {
+                return "SettingsBuilderRequest[" + "installationSettingsSource="
+                        + installationSettingsSource + ", projectSettingsSource="
+                        + projectSettingsSource + ", userSettingsSource="
+                        + userSettingsSource + ", interpolationSource="
+                        + interpolationSource + ']';
             }
         }
     }

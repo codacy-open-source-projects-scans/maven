@@ -44,6 +44,7 @@ import org.eclipse.aether.transfer.ArtifactNotFoundException;
 @Deprecated
 public class ClasspathArtifactResolver implements ArtifactResolver {
 
+    @Override
     public List<ArtifactResult> resolveArtifacts(
             RepositorySystemSession session, Collection<? extends ArtifactRequest> requests)
             throws ArtifactResolutionException {
@@ -59,7 +60,7 @@ public class ClasspathArtifactResolver implements ArtifactResolver {
 
                 try {
                     artifact = artifact.setFile(ProjectClasspathTestType.getFileForClasspathResource(
-                            ProjectClasspathTestType.dir + "transitive-" + scope + "-dep.xml"));
+                            ProjectClasspathTestType.DIR + "transitive-" + scope + "-dep.xml"));
                     result.setArtifact(artifact);
                 } catch (FileNotFoundException | URISyntaxException e) {
                     throw new IllegalStateException("Missing test POM for " + artifact, e);
@@ -73,6 +74,7 @@ public class ClasspathArtifactResolver implements ArtifactResolver {
         return results;
     }
 
+    @Override
     public ArtifactResult resolveArtifact(RepositorySystemSession session, ArtifactRequest request)
             throws ArtifactResolutionException {
         return resolveArtifacts(session, Collections.singleton(request)).get(0);

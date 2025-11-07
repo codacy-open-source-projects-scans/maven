@@ -29,6 +29,7 @@ public class TypeArtifactFilter implements ArtifactFilter {
         this.type = type;
     }
 
+    @Override
     public boolean include(Artifact artifact) {
         return type.equals(artifact.getType());
     }
@@ -46,12 +47,10 @@ public class TypeArtifactFilter implements ArtifactFilter {
             return true;
         }
 
-        if (!(obj instanceof TypeArtifactFilter)) {
+        if (obj instanceof TypeArtifactFilter other) {
+            return type.equals(other.type);
+        } else {
             return false;
         }
-
-        TypeArtifactFilter other = (TypeArtifactFilter) obj;
-
-        return type.equals(other.type);
     }
 }

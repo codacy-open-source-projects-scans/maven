@@ -27,7 +27,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
-import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
 import org.apache.maven.RepositoryUtils;
@@ -48,16 +48,16 @@ import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.execution.MavenSession;
 import org.apache.maven.extension.internal.CoreExports;
 import org.apache.maven.extension.internal.CoreExtensionEntry;
-import org.apache.maven.internal.impl.DefaultArtifactCoordinatesFactory;
+import org.apache.maven.impl.DefaultArtifactCoordinatesFactory;
+import org.apache.maven.impl.DefaultArtifactResolver;
+import org.apache.maven.impl.DefaultModelVersionParser;
+import org.apache.maven.impl.DefaultRepositoryFactory;
+import org.apache.maven.impl.DefaultVersionParser;
+import org.apache.maven.impl.DefaultVersionRangeResolver;
+import org.apache.maven.impl.InternalSession;
+import org.apache.maven.impl.model.DefaultInterpolator;
 import org.apache.maven.internal.impl.DefaultArtifactManager;
-import org.apache.maven.internal.impl.DefaultArtifactResolver;
-import org.apache.maven.internal.impl.DefaultModelVersionParser;
-import org.apache.maven.internal.impl.DefaultRepositoryFactory;
 import org.apache.maven.internal.impl.DefaultSession;
-import org.apache.maven.internal.impl.DefaultVersionParser;
-import org.apache.maven.internal.impl.DefaultVersionRangeResolver;
-import org.apache.maven.internal.impl.InternalSession;
-import org.apache.maven.internal.impl.model.DefaultInterpolator;
 import org.apache.maven.plugin.PluginResolutionException;
 import org.apache.maven.plugin.internal.DefaultPluginDependenciesResolver;
 import org.apache.maven.resolver.MavenChainedWorkspaceReader;
@@ -139,7 +139,7 @@ public class BootstrapCoreExtensionManager {
             InternalSession.associate(repoSession, iSession);
 
             List<RemoteRepository> repositories = RepositoryUtils.toRepos(request.getPluginArtifactRepositories());
-            Function<String, String> interpolator = createInterpolator(request);
+            UnaryOperator<String> interpolator = createInterpolator(request);
 
             return resolveCoreExtensions(repoSession, repositories, providedArtifacts, extensions, interpolator);
         }
@@ -150,7 +150,7 @@ public class BootstrapCoreExtensionManager {
             List<RemoteRepository> repositories,
             Set<String> providedArtifacts,
             List<CoreExtension> configuration,
-            Function<String, String> interpolator)
+            UnaryOperator<String> interpolator)
             throws Exception {
         List<CoreExtensionEntry> extensions = new ArrayList<>();
 
@@ -208,7 +208,7 @@ public class BootstrapCoreExtensionManager {
             RepositorySystemSession repoSession,
             List<RemoteRepository> repositories,
             DependencyFilter dependencyFilter,
-            Function<String, String> interpolator)
+            UnaryOperator<String> interpolator)
             throws ExtensionResolutionException {
         try {
             /* TODO: Enhance the PluginDependenciesResolver to provide a
@@ -232,9 +232,9 @@ public class BootstrapCoreExtensionManager {
         }
     }
 
-    private static Function<String, String> createInterpolator(MavenExecutionRequest request) {
+    private static UnaryOperator<String> createInterpolator(MavenExecutionRequest request) {
         Interpolator interpolator = new DefaultInterpolator();
-        Function<String, String> callback = v -> {
+        UnaryOperator<String> callback = v -> {
             String r = request.getUserProperties().getProperty(v);
             if (r == null) {
                 r = request.getSystemProperties().getProperty(v);

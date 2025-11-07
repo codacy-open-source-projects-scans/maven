@@ -24,12 +24,10 @@ import org.junit.jupiter.api.Test;
 
 /**
  * This is a test set for <a href="https://issues.apache.org/jira/browse/MNG-8379">MNG-8379</a>.
+ * @since 4.0.0-beta-6
+ *
  */
 class MavenITmng8379SettingsDecryptTest extends AbstractMavenIntegrationTestCase {
-
-    MavenITmng8379SettingsDecryptTest() {
-        super("[4.0.0-beta-6,)");
-    }
 
     /**
      *  Verify that all settings are decrypted
@@ -47,8 +45,7 @@ class MavenITmng8379SettingsDecryptTest extends AbstractMavenIntegrationTestCase
         verifier.verifyErrorFreeLog();
 
         // there is a warning and all fields decrypted
-        verifier.verifyTextInLog(
-                "[INFO] Some problems were encountered while building the effective settings (use -X to see details)");
+        verifier.verifyTextInLog(" encountered while building the effective settings (use -e to see details)");
         verifier.verifyTextInLog("<password>testtest</password>");
         verifier.verifyTextInLog("<value>testtest</value>");
     }
@@ -71,8 +68,7 @@ class MavenITmng8379SettingsDecryptTest extends AbstractMavenIntegrationTestCase
 
         // there is no warning and all fields decrypted
         verifier.verifyTextNotInLog("[WARNING]");
-        verifier.verifyTextNotInLog(
-                "[INFO] Some problems were encountered while building the effective settings (use -X to see details)");
+        verifier.verifyTextNotInLog(" encountered while building the effective settings (use -e to see details)");
         verifier.verifyTextInLog("<password>testtest</password>");
         verifier.verifyTextInLog("<value>secretHeader</value>");
     }

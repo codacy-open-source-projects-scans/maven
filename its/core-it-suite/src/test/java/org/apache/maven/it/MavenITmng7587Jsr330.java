@@ -21,29 +21,22 @@ package org.apache.maven.it;
 import java.io.File;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.condition.EnabledOnJre;
-import org.junit.jupiter.api.condition.JRE;
 
 /**
  * This is a test set for <a href="https://issues.apache.org/jira/browse/MNG-7587">MNG-7587</a>.
  * Simply verifies that plexus component using JSR330 and compiled with JDK 17 bytecode can
  * work on maven.
+ * @since 4.0.0-alpha-5
  */
 class MavenITmng7587Jsr330 extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng7587Jsr330() {
-        // affected Maven versions: 4.0.0-alpha-5
-        super("(4.0.0-alpha-5,)");
-    }
-
     /**
-     * Verify components can be written using JSR330 on JDK 17.
+     * Verify components can be written using JSR330.
      *
      * @throws Exception in case of failure
      */
     @Test
-    @EnabledOnJre(JRE.JAVA_17)
-    void testJdk17() throws Exception {
+    void test() throws Exception {
         File testDir = extractResources("/mng-7587-jsr330").getAbsoluteFile();
 
         final Verifier pluginVerifier = newVerifier(new File(testDir, "plugin").getPath());

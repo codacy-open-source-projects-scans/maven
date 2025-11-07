@@ -40,10 +40,6 @@ import org.junit.jupiter.api.Test;
  */
 public class MavenITmng3461MirrorMatchingTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng3461MirrorMatchingTest() {
-        super("(2.0.8,)");
-    }
-
     /**
      * Test that mirror definitions are properly evaluated. In particular, an exact match by id should always
      * win over wildcard matches.
@@ -91,7 +87,7 @@ public class MavenITmng3461MirrorMatchingTest extends AbstractMavenIntegrationTe
                     response.getWriter().println(request.getRequestURI());
                 } else if (request.getRequestURI().endsWith("/b-0.1.pom")) {
                     response.setStatus(HttpServletResponse.SC_OK);
-                    response.getWriter().println("<project>");
+                    response.getWriter().println("<project xmlns=\"http://maven.apache.org/POM/4.0.0\">");
                     response.getWriter().println("  <modelVersion>4.0.0</modelVersion>");
                     response.getWriter().println("  <groupId>org.apache.maven.its.mng3461</groupId>");
                     response.getWriter().println("  <artifactId>b</artifactId>");

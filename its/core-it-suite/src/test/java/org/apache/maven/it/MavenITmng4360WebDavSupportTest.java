@@ -44,10 +44,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class MavenITmng4360WebDavSupportTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng4360WebDavSupportTest() {
-        super("[2.1.0-M1,)");
-    }
-
     /**
      * Verify that WebDAV works in principle. This test is not actually concerned about proper transfers but more
      * that the Jackrabbit based wagon can be properly loaded and doesn't die due to some class realm issue.
@@ -89,7 +85,7 @@ public class MavenITmng4360WebDavSupportTest extends AbstractMavenIntegrationTes
                 response.setStatus(HttpServletResponse.SC_OK);
 
                 if (request.getRequestURI().endsWith(".pom")) {
-                    writer.println("<project>");
+                    writer.println("<project xmlns=\"http://maven.apache.org/POM/4.0.0\">");
                     writer.println("  <modelVersion>4.0.0</modelVersion>");
                     writer.println("  <groupId>org.apache.maven.its.mng4360</groupId>");
                     writer.println("  <artifactId>dep</artifactId>");

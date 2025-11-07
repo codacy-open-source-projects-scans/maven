@@ -59,6 +59,7 @@ public class DefaultArtifactInstaller extends AbstractLogEnabled implements Arti
 
     /** @deprecated we want to use the artifact method only, and ensure artifact.file is set correctly. */
     @Deprecated
+    @Override
     public void install(String basedir, String finalName, Artifact artifact, ArtifactRepository localRepository)
             throws ArtifactInstallationException {
         String extension = artifact.getArtifactHandler().getExtension();
@@ -67,6 +68,7 @@ public class DefaultArtifactInstaller extends AbstractLogEnabled implements Arti
         install(source, artifact, localRepository);
     }
 
+    @Override
     public void install(File source, Artifact artifact, ArtifactRepository localRepository)
             throws ArtifactInstallationException {
         RepositorySystemSession session =
@@ -81,9 +83,9 @@ public class DefaultArtifactInstaller extends AbstractLogEnabled implements Arti
         request.addArtifact(mainArtifact);
 
         for (ArtifactMetadata metadata : artifact.getMetadataList()) {
-            if (metadata instanceof ProjectArtifactMetadata) {
+            if (metadata instanceof ProjectArtifactMetadata projectArtifactMetadata) {
                 org.eclipse.aether.artifact.Artifact pomArtifact = new SubArtifact(mainArtifact, "", "pom");
-                pomArtifact = pomArtifact.setFile(((ProjectArtifactMetadata) metadata).getFile());
+                pomArtifact = pomArtifact.setFile(projectArtifactMetadata.getFile());
                 request.addArtifact(pomArtifact);
             } else if (metadata instanceof SnapshotArtifactRepositoryMetadata
                     || metadata instanceof ArtifactRepositoryMetadata) {

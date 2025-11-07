@@ -42,9 +42,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
-import org.apache.maven.internal.impl.model.DefaultInterpolator;
+import org.apache.maven.impl.model.DefaultInterpolator;
 
 /**
  * Enhancement of the standard <code>Properties</code>
@@ -81,7 +81,7 @@ public class MavenProperties extends AbstractMap<String, String> {
     private List<String> header;
     private List<String> footer;
     private Path location;
-    private Function<String, String> callback;
+    private UnaryOperator<String> callback;
     boolean substitute = true;
     boolean typed;
 
@@ -91,7 +91,7 @@ public class MavenProperties extends AbstractMap<String, String> {
         this(location, null);
     }
 
-    public MavenProperties(Path location, Function<String, String> callback) throws IOException {
+    public MavenProperties(Path location, UnaryOperator<String> callback) throws IOException {
         this.location = location;
         this.callback = callback;
         if (Files.exists(location)) {
@@ -193,21 +193,26 @@ public class MavenProperties extends AbstractMap<String, String> {
                     final Iterator<Entry<String, String>> keyIterator =
                             storage.entrySet().iterator();
 
+                    @Override
                     public boolean hasNext() {
                         return keyIterator.hasNext();
                     }
 
+                    @Override
                     public Entry<String, String> next() {
                         final Entry<String, String> entry = keyIterator.next();
                         return new Entry<String, String>() {
+                            @Override
                             public String getKey() {
                                 return entry.getKey();
                             }
 
+                            @Override
                             public String getValue() {
                                 return entry.getValue();
                             }
 
+                            @Override
                             public String setValue(String value) {
                                 String old = entry.setValue(value);
                                 if (old == null || !old.equals(value)) {
@@ -221,6 +226,7 @@ public class MavenProperties extends AbstractMap<String, String> {
                         };
                     }
 
+                    @Override
                     public void remove() {
                         keyIterator.remove();
                     }
@@ -317,8 +323,8 @@ public class MavenProperties extends AbstractMap<String, String> {
 
     public boolean update(Map<String, String> props) {
         MavenProperties properties;
-        if (props instanceof MavenProperties) {
-            properties = (MavenProperties) props;
+        if (props instanceof MavenProperties mavenProperties) {
+            properties = mavenProperties;
         } else {
             properties = new MavenProperties();
             properties.putAll(props);
@@ -474,7 +480,7 @@ public class MavenProperties extends AbstractMap<String, String> {
         substitute(callback);
     }
 
-    public void substitute(Function<String, String> callback) {
+    public void substitute(UnaryOperator<String> callback) {
         new DefaultInterpolator().interpolate(storage, callback);
     }
 
@@ -865,7 +871,7 @@ public class MavenProperties extends AbstractMap<String, String> {
                     line = line.substring(0, line.length() - 1);
                 }
                 valueLines.add(line);
-                while (line.length() > 0 && contains(WHITE_SPACE, line.charAt(0))) {
+                while (!line.isEmpty() && contains(WHITE_SPACE, line.charAt(0))) {
                     line = line.substring(1, line.length());
                 }
                 buffer.append(line);

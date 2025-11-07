@@ -41,11 +41,10 @@ import org.apache.maven.execution.DefaultMavenExecutionRequest;
 import org.apache.maven.execution.DefaultMavenExecutionResult;
 import org.apache.maven.execution.MavenExecutionRequest;
 import org.apache.maven.execution.MavenSession;
-import org.apache.maven.internal.impl.model.reflection.IntrospectionException;
+import org.apache.maven.impl.model.reflection.IntrospectionException;
 import org.apache.maven.model.Build;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Model;
-import org.apache.maven.model.building.DefaultModelBuildingRequest;
 import org.apache.maven.model.root.RootLocator;
 import org.apache.maven.plugin.descriptor.MojoDescriptor;
 import org.apache.maven.plugin.descriptor.PluginDescriptor;
@@ -68,7 +67,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  */
@@ -248,7 +246,7 @@ class PluginParameterExpressionEvaluatorTest extends AbstractCoreMavenComponentT
     }
 
     @Test
-    void testPOMPropertyExtractionWithMissingProject_WithDotNotation() throws Exception {
+    void testPOMPropertyExtractionWithMissingProjectWithDotNotation() throws Exception {
         String key = "m2.name";
         String checkValue = "value";
 
@@ -322,7 +320,7 @@ class PluginParameterExpressionEvaluatorTest extends AbstractCoreMavenComponentT
     }
 
     @Test
-    void testValueExtractionFromSystemPropertiesWithMissingProject_WithDotNotation() throws Exception {
+    void testValueExtractionFromSystemPropertiesWithMissingProjectWithDotNotation() throws Exception {
         String sysprop = "PPEET.sysprop2";
 
         Properties executionProperties = new Properties();
@@ -343,12 +341,11 @@ class PluginParameterExpressionEvaluatorTest extends AbstractCoreMavenComponentT
             throws CycleDetectedException, DuplicateProjectException {
         MavenExecutionRequest request = new DefaultMavenExecutionRequest()
                 .setSystemProperties(properties)
-                .setGoals(Collections.<String>emptyList())
+                .setGoals(Collections.emptyList())
                 .setBaseDirectory(new File(""))
                 .setLocalRepository(repo);
 
-        return new MavenSession(
-                container, request, new DefaultMavenExecutionResult(), Collections.<MavenProject>emptyList());
+        return new MavenSession(container, request, new DefaultMavenExecutionResult(), Collections.emptyList());
     }
 
     @Test
@@ -389,7 +386,7 @@ class PluginParameterExpressionEvaluatorTest extends AbstractCoreMavenComponentT
 
         Object value = ee.evaluate("${plugin.artifacts}");
 
-        assertTrue(value instanceof List);
+        assertInstanceOf(List.class, value);
 
         @SuppressWarnings("unchecked")
         List<Artifact> artifacts = (List<Artifact>) value;
@@ -456,7 +453,6 @@ class PluginParameterExpressionEvaluatorTest extends AbstractCoreMavenComponentT
         MavenSession mavenSession = createMavenSession(null);
         mavenSession.getRequest().setTopDirectory(path);
         mavenSession.getRequest().setRootDirectory(path);
-        DefaultModelBuildingRequest mbr = new DefaultModelBuildingRequest();
 
         PluginParameterExpressionEvaluator evaluator =
                 new PluginParameterExpressionEvaluator(mavenSession, new MojoExecution(null));

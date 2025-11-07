@@ -54,10 +54,6 @@ public class MavenITmng4343MissingReleaseUpdatePolicyTest extends AbstractMavenI
 
     private int port;
 
-    public MavenITmng4343MissingReleaseUpdatePolicyTest() {
-        super("[3.0-alpha-3,)");
-    }
-
     @BeforeEach
     protected void setUp() throws Exception {
         Handler repoHandler = new AbstractHandler() {
@@ -79,7 +75,7 @@ public class MavenITmng4343MissingReleaseUpdatePolicyTest extends AbstractMavenI
                     response.setStatus(HttpServletResponse.SC_OK);
 
                     if (request.getRequestURI().endsWith(".pom")) {
-                        writer.println("<project>");
+                        writer.println("<project xmlns=\"http://maven.apache.org/POM/4.0.0\">");
                         writer.println("  <modelVersion>4.0.0</modelVersion>");
                         writer.println("  <groupId>org.apache.maven.its.mng4343</groupId>");
                         writer.println("  <artifactId>dep</artifactId>");

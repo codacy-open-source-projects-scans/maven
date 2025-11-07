@@ -30,7 +30,6 @@ import java.util.stream.Collectors;
 
 import org.apache.maven.api.xml.XmlNode;
 import org.apache.maven.execution.MavenSession;
-import org.apache.maven.internal.xml.XmlNodeImpl;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.plugin.BuildPluginManager;
 import org.apache.maven.plugin.InvalidPluginDescriptorException;
@@ -95,7 +94,7 @@ public class MojoDescriptorCreator {
     public static XmlNode convert(org.apache.maven.api.plugin.descriptor.MojoDescriptor mojoDescriptor) {
         List<XmlNode> children = mojoDescriptor.getParameters().stream()
                 .filter(p -> p.getDefaultValue() != null || p.getExpression() != null)
-                .map(p -> new XmlNodeImpl(
+                .map(p -> XmlNode.newInstance(
                         p.getName(),
                         p.getExpression(),
                         p.getDefaultValue() != null
@@ -104,7 +103,7 @@ public class MojoDescriptorCreator {
                         null,
                         null))
                 .collect(Collectors.toList());
-        return new XmlNodeImpl("configuration", null, null, children, null);
+        return XmlNode.newInstance("configuration", children);
     }
 
     public static org.codehaus.plexus.util.xml.Xpp3Dom convert(MojoDescriptor mojoDescriptor) {
@@ -117,7 +116,7 @@ public class MojoDescriptorCreator {
                 String value = ce.getValue(null);
                 String defaultValue = ce.getAttribute("default-value", null);
                 if (value != null || defaultValue != null) {
-                    XmlNodeImpl e = new XmlNodeImpl(
+                    XmlNode e = XmlNode.newInstance(
                             ce.getName(),
                             value,
                             defaultValue != null ? Collections.singletonMap("default-value", defaultValue) : null,
@@ -128,7 +127,7 @@ public class MojoDescriptorCreator {
             }
         }
 
-        XmlNodeImpl dom = new XmlNodeImpl("configuration", null, null, children, null);
+        XmlNode dom = XmlNode.newInstance("configuration", children);
         return new org.codehaus.plexus.util.xml.Xpp3Dom(dom);
     }
 
@@ -138,9 +137,9 @@ public class MojoDescriptorCreator {
             throws PluginNotFoundException, PluginResolutionException, PluginDescriptorParsingException,
                     MojoNotFoundException, NoPluginFoundForPrefixException, InvalidPluginDescriptorException,
                     PluginVersionResolutionException {
-        String goal = null;
+        StringBuilder goal = new StringBuilder();
 
-        Plugin plugin = null;
+        Plugin plugin;
 
         String[] tok = task.split(":");
 
@@ -160,11 +159,11 @@ public class MojoDescriptorCreator {
             plugin.setGroupId(tok[0]);
             plugin.setArtifactId(tok[1]);
             plugin.setVersion(tok[2]);
-            goal = tok[3];
+            goal.append(tok[3]);
 
             // This won't be valid, but it constructs something easy to read in the error message
             for (int idx = 4; idx < tok.length; idx++) {
-                goal += ":" + tok[idx];
+                goal.append(":").append(tok[idx]);
             }
         } else if (numTokens == 3) {
             // groupId:artifactId:goal or pluginPrefix:version:goal (since Maven 3.9.0)
@@ -189,7 +188,7 @@ public class MojoDescriptorCreator {
                 plugin = findPluginForPrefix(firstToken, session);
                 plugin.setVersion(tok[1]);
             }
-            goal = tok[2];
+            goal.append(tok[2]);
         } else {
             // We have a prefix and goal
             //
@@ -198,10 +197,7 @@ public class MojoDescriptorCreator {
             String prefix = tok[0];
 
             if (numTokens == 2) {
-                goal = tok[1];
-            } else {
-                // goal was missing - pass through to MojoNotFoundException
-                goal = "";
+                goal.append(tok[1]);
             }
 
             // This is the case where someone has executed a single goal from the command line
@@ -216,9 +212,9 @@ public class MojoDescriptorCreator {
             plugin = findPluginForPrefix(prefix, session);
         }
 
-        int executionIdx = goal.indexOf('@');
+        int executionIdx = goal.indexOf("@");
         if (executionIdx > 0) {
-            goal = goal.substring(0, executionIdx);
+            goal.setLength(executionIdx);
         }
 
         injectPluginDeclarationFromProject(plugin, project);
@@ -231,7 +227,7 @@ public class MojoDescriptorCreator {
         }
 
         return pluginManager.getMojoDescriptor(
-                plugin, goal, project.getRemotePluginRepositories(), session.getRepositorySession());
+                plugin, goal.toString(), project.getRemotePluginRepositories(), session.getRepositorySession());
     }
 
     // TODO take repo mans into account as one may be aggregating prefixes of many

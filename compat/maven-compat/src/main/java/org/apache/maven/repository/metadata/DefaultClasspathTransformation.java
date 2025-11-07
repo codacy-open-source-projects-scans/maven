@@ -41,6 +41,7 @@ public class DefaultClasspathTransformation implements ClasspathTransformation {
     GraphConflictResolver conflictResolver;
 
     // ----------------------------------------------------------------------------------------------------
+    @Override
     public ClasspathContainer transform(MetadataGraph dirtyGraph, ArtifactScopeEnum scope, boolean resolve)
             throws MetadataGraphTransformationException {
         try {
@@ -93,39 +94,17 @@ public class DefaultClasspathTransformation implements ClasspathTransformation {
         }
 
         // -----------------------------------------------------------------------
-        protected void visit(MetadataGraphVertex node) // , String version, String artifactUri )
-                {
+        protected void visit(MetadataGraphVertex node) {
             ArtifactMetadata md = node.getMd();
             if (visited.contains(node)) {
                 return;
             }
 
             cpc.add(md);
-            //
-            //            TreeSet<MetadataGraphEdge> deps = new TreeSet<MetadataGraphEdge>(
-            //                        new Comparator<MetadataGraphEdge>()
-            //                        {
-            //                            public int compare( MetadataGraphEdge e1
-            //                                              , MetadataGraphEdge e2
-            //                                              )
-            //                            {
-            //                                if( e1.getDepth() == e2.getDepth() )
-            //                                {
-            //                                    if( e2.getPomOrder() == e1.getPomOrder() )
-            //                                        return
-            // e1.getTarget().toString().compareTo(e2.getTarget().toString() );
-            //
-            //                                    return e2.getPomOrder() - e1.getPomOrder();
-            //                                }
-            //
-            //                                return e2.getDepth() - e1.getDepth();
-            //                            }
-            //                        }
-            //                    );
 
             List<MetadataGraphEdge> exits = graph.getExcidentEdges(node);
 
-            if (exits != null && exits.size() > 0) {
+            if (exits != null && !exits.isEmpty()) {
                 MetadataGraphEdge[] sortedExits = exits.toArray(new MetadataGraphEdge[0]);
                 Arrays.sort(sortedExits, (e1, e2) -> {
                     if (e1.getDepth() == e2.getDepth()) {

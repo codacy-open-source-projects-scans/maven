@@ -18,9 +18,6 @@
  */
 package org.apache.maven.api.services;
 
-import java.io.Serial;
-import java.util.List;
-
 import org.apache.maven.api.annotations.Experimental;
 
 /**
@@ -31,9 +28,6 @@ import org.apache.maven.api.annotations.Experimental;
 @Experimental
 public class ToolchainsBuilderException extends MavenBuilderException {
 
-    @Serial
-    private static final long serialVersionUID = 7899871809665729349L;
-
     /**
      * @param message the message to give
      * @param e the {@link Exception}
@@ -42,7 +36,7 @@ public class ToolchainsBuilderException extends MavenBuilderException {
         super(message, e);
     }
 
-    public ToolchainsBuilderException(String message, List<BuilderProblem> problems) {
+    public ToolchainsBuilderException(String message, ProblemCollector<BuilderProblem> problems) {
         super(message, problems);
     }
 }

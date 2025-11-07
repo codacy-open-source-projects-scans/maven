@@ -18,10 +18,6 @@
  */
 package org.apache.maven.api.services;
 
-import java.io.Serial;
-import java.util.Collections;
-import java.util.List;
-
 import org.apache.maven.api.annotations.Experimental;
 
 /**
@@ -31,9 +27,6 @@ import org.apache.maven.api.annotations.Experimental;
  */
 @Experimental
 public class ModelBuilderException extends MavenException {
-
-    @Serial
-    private static final long serialVersionUID = -1865447022070650896L;
 
     private final ModelBuilderResult result;
 
@@ -82,10 +75,10 @@ public class ModelBuilderException extends MavenException {
      *
      * @return The problems that caused this exception, never {@code null}.
      */
-    public List<ModelProblem> getProblems() {
+    public ProblemCollector<ModelProblem> getProblemCollector() {
         if (result == null) {
-            return Collections.emptyList();
+            return ProblemCollector.empty();
         }
-        return Collections.unmodifiableList(result.getProblems());
+        return result.getProblemCollector();
     }
 }

@@ -18,6 +18,7 @@
  */
 package org.apache.maven.api.services.model;
 
+import org.apache.maven.api.Session;
 import org.apache.maven.api.model.Model;
 import org.apache.maven.api.services.ModelProblemCollector;
 
@@ -49,9 +50,17 @@ public interface ModelValidator {
      */
     int VALIDATION_LEVEL_MAVEN_4_0 = 40;
     /**
+     * Denotes validation as performed by Maven 4.1. This validation level is meant for new projects.
+     */
+    int VALIDATION_LEVEL_MAVEN_4_1 = 41;
+    /**
+     * Denotes validation as performed by Maven 4.2. This validation level is meant for new projects.
+     */
+    int VALIDATION_LEVEL_MAVEN_4_2 = 42;
+    /**
      * Denotes strict validation as recommended by the current Maven version.
      */
-    int VALIDATION_LEVEL_STRICT = VALIDATION_LEVEL_MAVEN_4_0;
+    int VALIDATION_LEVEL_STRICT = VALIDATION_LEVEL_MAVEN_4_2;
 
     /**
      * Checks the specified file model for missing or invalid values. This model is directly created from the POM
@@ -61,7 +70,7 @@ public interface ModelValidator {
      * @param validationLevel The validation level.
      * @param problems The container used to collect problems that were encountered, must not be {@code null}.
      */
-    void validateFileModel(Model model, int validationLevel, ModelProblemCollector problems);
+    void validateFileModel(Session session, Model model, int validationLevel, ModelProblemCollector problems);
 
     /**
      * Checks the specified (raw) model for missing or invalid values. The raw model is the file model + buildpom filter
@@ -71,7 +80,7 @@ public interface ModelValidator {
      * @param validationLevel The validation level.
      * @param problems The container used to collect problems that were encountered, must not be {@code null}.
      */
-    void validateRawModel(Model model, int validationLevel, ModelProblemCollector problems);
+    void validateRawModel(Session session, Model model, int validationLevel, ModelProblemCollector problems);
 
     /**
      * Checks the specified (effective) model for missing or invalid values. The effective model is fully assembled and
@@ -81,5 +90,5 @@ public interface ModelValidator {
      * @param validationLevel The validation level.
      * @param problems The container used to collect problems that were encountered, must not be {@code null}.
      */
-    void validateEffectiveModel(Model model, int validationLevel, ModelProblemCollector problems);
+    void validateEffectiveModel(Session session, Model model, int validationLevel, ModelProblemCollector problems);
 }

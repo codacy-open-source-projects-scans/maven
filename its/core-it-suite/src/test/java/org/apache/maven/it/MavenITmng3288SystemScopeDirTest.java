@@ -30,9 +30,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * @author Benjamin Bentmann
  */
 public class MavenITmng3288SystemScopeDirTest extends AbstractMavenIntegrationTestCase {
-    public MavenITmng3288SystemScopeDirTest() {
-        super("[2.0.9,)");
-    }
 
     /**
      * Test the use of a system scoped dependency to a directory instead of a JAR which should fail early.
@@ -46,7 +43,7 @@ public class MavenITmng3288SystemScopeDirTest extends AbstractMavenIntegrationTe
         Verifier verifier = newVerifier(testDir.getAbsolutePath());
         verifier.setAutoclean(false);
         verifier.addCliArgument("validate");
-        VerificationException exception = assertThrows(
+        assertThrows(
                 VerificationException.class,
                 verifier::execute,
                 "Usage of directory instead of file for system-scoped dependency did not fail dependency resolution");

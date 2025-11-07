@@ -20,6 +20,7 @@ package org.apache.maven.it;
 
 import java.io.File;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -29,9 +30,6 @@ import org.junit.jupiter.api.Test;
  * @author Martin Kanters
  */
 public class MavenITmng4660ResumeFromTest extends AbstractMavenIntegrationTestCase {
-    public MavenITmng4660ResumeFromTest() {
-        super("[4.0.0-alpha-1,)");
-    }
 
     /**
      * Test that the --resume-from flag resolves dependencies inside the same Maven project
@@ -40,7 +38,21 @@ public class MavenITmng4660ResumeFromTest extends AbstractMavenIntegrationTestCa
      * module-a has not been packaged.
      *
      * @throws Exception in case of failure
+     *
+     * THIS TEST IS DISABLED
+     * this test (and expectation) goes against Maven nature: here it is expected that
+     * - you "cut" your reactor w/ -rf
+     * - but make Maven pick up "artifact" from some 4th place: not from Project Local Repository, not from
+     *   Local Repository, and not from any Remote Repository, but from target/classes of left out subproject.
+     *
+     * Questions to tinker for those that are missing this use case:
+     * - if you want access to un-packaged subproject, why are you leaving it out from reactor?
+     * - if you do must leave it out, why are you not packaging it?
+     * - (maven3) why the hell are you not installing it?
+     *
+     * Recommended read: https://maveniverse.eu/blog/2025/03/17/never-say-never/
      */
+    @Disabled("This test goes against Maven (see javadoc above)")
     @Test
     public void testShouldResolveOutputDirectoryFromEarlierBuild() throws Exception {
         final File testDir = extractResources("/mng-4660-resume-from");

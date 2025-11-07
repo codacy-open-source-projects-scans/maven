@@ -41,15 +41,20 @@ public class MavenITmng3506ArtifactHandlersFromPluginsTest extends AbstractMaven
     private static final String BAD_TYPE1 = "coreit-1";
     private static final String BAD_TYPE2 = "coreit-2";
 
-    public MavenITmng3506ArtifactHandlersFromPluginsTest() {
-        super("(2.2.0,)");
-    }
-
     @Test
     public void testProjectPackagingUsage() throws IOException, VerificationException {
         File testDir = extractResources("/" + AID);
 
-        Verifier verifier = newVerifier(testDir.getAbsolutePath());
+        // First, build the test plugin
+        Verifier verifier = newVerifier(new File(testDir, "mng-3506.2/maven-it-plugin-extension2").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Then, run the test project that uses the plugin
+        verifier = newVerifier(testDir.getAbsolutePath());
 
         verifier.deleteArtifacts(GID);
 

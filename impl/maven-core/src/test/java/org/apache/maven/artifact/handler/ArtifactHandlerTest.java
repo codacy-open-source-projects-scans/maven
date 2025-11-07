@@ -38,6 +38,7 @@ class ArtifactHandlerTest {
     PlexusContainer container;
 
     @Test
+    @SuppressWarnings("checkstyle:UnusedLocalVariable")
     void testAptConsistency() throws Exception {
         File apt = getTestFile("src/site/apt/artifact-handlers.apt");
 
@@ -98,6 +99,6 @@ class ArtifactHandlerTest {
     private String trimApt(String content) {
         content = content.replace('<', ' ').replace('>', ' ').trim();
 
-        return (content.length() == 0) ? null : content;
+        return (content.isEmpty()) ? null : content;
     }
 }

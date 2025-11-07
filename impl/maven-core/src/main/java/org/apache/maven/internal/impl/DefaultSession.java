@@ -20,6 +20,7 @@ package org.apache.maven.internal.impl;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -37,9 +38,13 @@ import org.apache.maven.api.services.Lookup;
 import org.apache.maven.api.services.LookupException;
 import org.apache.maven.api.services.MavenException;
 import org.apache.maven.api.settings.Settings;
+import org.apache.maven.api.toolchain.ToolchainModel;
 import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.bridge.MavenRepositorySystem;
 import org.apache.maven.execution.MavenSession;
+import org.apache.maven.impl.AbstractSession;
+import org.apache.maven.impl.DefaultRemoteRepository;
+import org.apache.maven.impl.PropertiesAsMap;
 import org.apache.maven.plugin.MojoExecution;
 import org.apache.maven.plugin.descriptor.MojoDescriptor;
 import org.apache.maven.plugin.descriptor.PluginDescriptor;
@@ -48,8 +53,8 @@ import org.apache.maven.rtinfo.RuntimeInformation;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 
-import static org.apache.maven.internal.impl.Utils.map;
-import static org.apache.maven.internal.impl.Utils.nonNull;
+import static java.util.Objects.requireNonNull;
+import static org.apache.maven.internal.impl.CoreUtils.map;
 
 public class DefaultSession extends AbstractSession implements InternalMavenSession {
 
@@ -67,7 +72,7 @@ public class DefaultSession extends AbstractSession implements InternalMavenSess
             @Nonnull Lookup lookup,
             @Nonnull RuntimeInformation runtimeInformation) {
         super(
-                nonNull(session).getRepositorySession(),
+                requireNonNull(session).getRepositorySession(),
                 repositorySystem,
                 remoteRepositories,
                 remoteRepositories == null
@@ -79,6 +84,7 @@ public class DefaultSession extends AbstractSession implements InternalMavenSess
         this.runtimeInformation = runtimeInformation;
     }
 
+    @Override
     public MavenSession getMavenSession() {
         if (mavenSession == null) {
             throw new IllegalArgumentException("Found null mavenSession on session " + this);
@@ -107,6 +113,15 @@ public class DefaultSession extends AbstractSession implements InternalMavenSess
     @Override
     public Settings getSettings() {
         return getMavenSession().getSettings().getDelegate();
+    }
+
+    @Nonnull
+    @Override
+    public Collection<ToolchainModel> getToolchains() {
+        return getMavenSession().getRequest().getToolchains().values().stream()
+                .flatMap(Collection::stream)
+                .map(org.apache.maven.toolchain.model.ToolchainModel::getDelegate)
+                .toList();
     }
 
     @Nonnull
@@ -168,7 +183,7 @@ public class DefaultSession extends AbstractSession implements InternalMavenSess
     @Nonnull
     @Override
     public Map<String, Object> getPluginContext(Project project) {
-        nonNull(project, "project");
+        requireNonNull(project, "project" + " cannot be null");
         try {
             MojoExecution mojoExecution = lookup.lookup(MojoExecution.class);
             MojoDescriptor mojoDescriptor = mojoExecution.getMojoDescriptor();
@@ -179,8 +194,10 @@ public class DefaultSession extends AbstractSession implements InternalMavenSess
         }
     }
 
+    @Override
     protected Session newSession(RepositorySystemSession repoSession, List<RemoteRepository> repositories) {
-        final MavenSession ms = nonNull(getMavenSession());
+        MavenSession t = getMavenSession();
+        final MavenSession ms = requireNonNull(t);
         final MavenSession mss;
         if (repoSession != ms.getRepositorySession()) {
             mss = new MavenSession(repoSession, ms.getRequest(), ms.getResult());
@@ -192,7 +209,7 @@ public class DefaultSession extends AbstractSession implements InternalMavenSess
 
     protected Session newSession(MavenSession mavenSession, List<RemoteRepository> repositories) {
         return new DefaultSession(
-                nonNull(mavenSession),
+                requireNonNull(mavenSession),
                 getRepositorySystem(),
                 repositories,
                 mavenRepositorySystem,
@@ -200,9 +217,10 @@ public class DefaultSession extends AbstractSession implements InternalMavenSess
                 runtimeInformation);
     }
 
+    @Override
     public ArtifactRepository toArtifactRepository(RemoteRepository repository) {
-        if (repository instanceof DefaultRemoteRepository) {
-            org.eclipse.aether.repository.RemoteRepository rr = ((DefaultRemoteRepository) repository).getRepository();
+        if (repository instanceof DefaultRemoteRepository defaultRemoteRepository) {
+            org.eclipse.aether.repository.RemoteRepository rr = defaultRemoteRepository.getRepository();
 
             try {
                 return mavenRepositorySystem.createRepository(

@@ -117,24 +117,23 @@ public class DefaultPluginRealmCache implements PluginRealmCache, Disposable {
                 return true;
             }
 
-            if (!(o instanceof CacheKey)) {
+            if (o instanceof CacheKey that) {
+                return parentRealm == that.parentRealm
+                        && CacheUtils.pluginEquals(plugin, that.plugin)
+                        && Objects.equals(workspace, that.workspace)
+                        && Objects.equals(localRepo, that.localRepo)
+                        && RepositoryUtils.repositoriesEquals(this.repositories, that.repositories)
+                        && Objects.equals(filter, that.filter)
+                        && Objects.equals(foreignImports, that.foreignImports);
+            } else {
                 return false;
             }
-
-            CacheKey that = (CacheKey) o;
-
-            return parentRealm == that.parentRealm
-                    && CacheUtils.pluginEquals(plugin, that.plugin)
-                    && Objects.equals(workspace, that.workspace)
-                    && Objects.equals(localRepo, that.localRepo)
-                    && RepositoryUtils.repositoriesEquals(this.repositories, that.repositories)
-                    && Objects.equals(filter, that.filter)
-                    && Objects.equals(foreignImports, that.foreignImports);
         }
     }
 
     protected final Map<Key, CacheRecord> cache = new ConcurrentHashMap<>();
 
+    @Override
     public Key createKey(
             Plugin plugin,
             ClassLoader parentRealm,
@@ -145,6 +144,7 @@ public class DefaultPluginRealmCache implements PluginRealmCache, Disposable {
         return new CacheKey(plugin, parentRealm, foreignImports, dependencyFilter, repositories, session);
     }
 
+    @Override
     public CacheRecord get(Key key) {
         return cache.get(key);
     }
@@ -161,16 +161,17 @@ public class DefaultPluginRealmCache implements PluginRealmCache, Disposable {
                 }
             });
         } catch (RuntimeException e) {
-            if (e.getCause() instanceof PluginResolutionException) {
-                throw (PluginResolutionException) e.getCause();
+            if (e.getCause() instanceof PluginResolutionException pluginResolutionException) {
+                throw pluginResolutionException;
             }
-            if (e.getCause() instanceof PluginContainerException) {
-                throw (PluginContainerException) e.getCause();
+            if (e.getCause() instanceof PluginContainerException pluginContainerException) {
+                throw pluginContainerException;
             }
             throw e;
         }
     }
 
+    @Override
     public CacheRecord put(Key key, ClassRealm pluginRealm, List<Artifact> pluginArtifacts) {
         Objects.requireNonNull(pluginRealm, "pluginRealm cannot be null");
         Objects.requireNonNull(pluginArtifacts, "pluginArtifacts cannot be null");
@@ -186,6 +187,7 @@ public class DefaultPluginRealmCache implements PluginRealmCache, Disposable {
         return record;
     }
 
+    @Override
     public void flush() {
         for (CacheRecord record : cache.values()) {
             ClassRealm realm = record.getRealm();
@@ -206,10 +208,12 @@ public class DefaultPluginRealmCache implements PluginRealmCache, Disposable {
         return CacheUtils.pluginEquals(a, b);
     }
 
+    @Override
     public void register(MavenProject project, Key key, CacheRecord record) {
         // default cache does not track plugin usage
     }
 
+    @Override
     public void dispose() {
         flush();
     }

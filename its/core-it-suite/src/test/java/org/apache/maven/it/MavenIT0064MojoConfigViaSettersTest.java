@@ -23,9 +23,6 @@ import java.io.File;
 import org.junit.jupiter.api.Test;
 
 public class MavenIT0064MojoConfigViaSettersTest extends AbstractMavenIntegrationTestCase {
-    public MavenIT0064MojoConfigViaSettersTest() {
-        super(ALL_MAVEN_VERSIONS);
-    }
 
     /**
      * Test the use of a mojo that uses setters instead of private fields
@@ -37,7 +34,16 @@ public class MavenIT0064MojoConfigViaSettersTest extends AbstractMavenIntegratio
     public void testit0064() throws Exception {
         File testDir = extractResources("/it0064");
 
-        Verifier verifier = newVerifier(testDir.getAbsolutePath());
+        // First, build the test plugin
+        Verifier verifier = newVerifier(new File(testDir, "maven-it-plugin-setter").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Then, run the test project that uses the plugin
+        verifier = newVerifier(testDir.getAbsolutePath());
         verifier.setAutoclean(false);
         verifier.deleteDirectory("target");
         verifier.addCliArgument("org.apache.maven.its.plugins:maven-it-plugin-setter:setter-touch");

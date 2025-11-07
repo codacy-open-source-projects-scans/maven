@@ -26,7 +26,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -38,6 +37,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
@@ -48,6 +48,7 @@ import org.apache.maven.api.Node;
 import org.apache.maven.api.PathScope;
 import org.apache.maven.api.PathType;
 import org.apache.maven.api.Project;
+import org.apache.maven.api.Service;
 import org.apache.maven.api.Session;
 import org.apache.maven.api.plugin.descriptor.Resolution;
 import org.apache.maven.api.services.DependencyResolver;
@@ -64,6 +65,7 @@ import org.apache.maven.execution.scope.internal.MojoExecutionScopeModule;
 import org.apache.maven.internal.impl.DefaultLog;
 import org.apache.maven.internal.impl.DefaultMojoExecution;
 import org.apache.maven.internal.impl.InternalMavenSession;
+import org.apache.maven.internal.impl.SisuDiBridgeModule;
 import org.apache.maven.internal.xml.XmlPlexusConfiguration;
 import org.apache.maven.model.Plugin;
 import org.apache.maven.plugin.ContextEnabled;
@@ -193,6 +195,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         this.prerequisitesCheckers = prerequisitesCheckers;
     }
 
+    @Override
     public PluginDescriptor getPluginDescriptor(
             Plugin plugin, List<RemoteRepository> repositories, RepositorySystemSession session)
             throws PluginResolutionException, PluginDescriptorParsingException, InvalidPluginDescriptorException {
@@ -283,6 +286,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         }
     }
 
+    @Override
     public MojoDescriptor getMojoDescriptor(
             Plugin plugin, String goal, List<RemoteRepository> repositories, RepositorySystemSession session)
             throws MojoNotFoundException, PluginResolutionException, PluginDescriptorParsingException,
@@ -329,6 +333,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         checkPrerequisites(pluginDescriptor);
     }
 
+    @Override
     public void setupPluginRealm(
             PluginDescriptor pluginDescriptor,
             MavenSession session,
@@ -431,6 +436,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
     private void discoverPluginComponents(
             final ClassRealm pluginRealm, Plugin plugin, PluginDescriptor pluginDescriptor)
             throws PluginContainerException {
+        ClassLoader prevTccl = Thread.currentThread().getContextClassLoader();
         try {
             if (pluginDescriptor != null) {
                 for (MojoDescriptor mojo : pluginDescriptor.getMojos()) {
@@ -441,18 +447,22 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
                 }
             }
 
+            Thread.currentThread().setContextClassLoader(pluginRealm);
             ((DefaultPlexusContainer) container)
                     .discoverComponents(
                             pluginRealm,
                             new SessionScopeModule(container.lookup(SessionScope.class)),
                             new MojoExecutionScopeModule(container.lookup(MojoExecutionScope.class)),
-                            new PluginConfigurationModule(plugin.getDelegate()));
+                            new PluginConfigurationModule(plugin.getDelegate()),
+                            new SisuDiBridgeModule(true));
         } catch (ComponentLookupException | CycleDetectedInComponentGraphException e) {
             throw new PluginContainerException(
                     plugin,
                     pluginRealm,
                     "Error in component graph of plugin " + plugin.getId() + ": " + e.getMessage(),
                     e);
+        } finally {
+            Thread.currentThread().setContextClassLoader(prevTccl);
         }
     }
 
@@ -464,7 +474,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         return dependencyResult.getDependencyNodeResults().stream()
                 .filter(n -> n.getArtifact().getPath() != null)
                 .map(n -> RepositoryUtils.toArtifact(n.getDependency()))
-                .collect(Collectors.toUnmodifiableList());
+                .toList();
     }
 
     private Map<String, ClassLoader> calcImports(
@@ -488,6 +498,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         return foreignImports;
     }
 
+    @Override
     public <T> T getConfiguredMojo(Class<T> mojoInterface, MavenSession session, MojoExecution mojoExecution)
             throws PluginConfigurationException, PluginContainerException {
         MojoDescriptor mojoDescriptor = mojoExecution.getMojoDescriptor();
@@ -556,6 +567,10 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
             injector.bindInstance(Project.class, project);
             injector.bindInstance(org.apache.maven.api.MojoExecution.class, execution);
             injector.bindInstance(org.apache.maven.api.plugin.Log.class, log);
+
+            Map<Class<? extends Service>, Supplier<? extends Service>> services = sessionV4.getAllServices();
+            services.forEach((itf, svc) -> injector.bindSupplier((Class<Service>) itf, (Supplier<Service>) svc));
+
             mojo = mojoInterface.cast(injector.getInstance(
                     Key.of(mojoDescriptor.getImplementationClass(), mojoDescriptor.getRoleHint())));
 
@@ -713,7 +728,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
                     e);
         }
 
-        if (mojo instanceof ContextEnabled) {
+        if (mojo instanceof ContextEnabled contextEnabledMojo) {
             MavenProject project = session.getCurrentProject();
 
             Map<String, Object> pluginContext = session.getPluginContext(pluginDescriptor, project);
@@ -723,13 +738,13 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
 
                 pluginContext.put("pluginDescriptor", pluginDescriptor);
 
-                ((ContextEnabled) mojo).setPluginContext(pluginContext);
+                contextEnabledMojo.setPluginContext(pluginContext);
             }
         }
 
-        if (mojo instanceof Mojo) {
+        if (mojo instanceof Mojo mojoInstance) {
             Logger mojoLogger = LoggerFactory.getLogger(mojoDescriptor.getImplementation());
-            ((Mojo) mojo).setLog(new MojoLogWrapper(mojoLogger));
+            mojoInstance.setLog(new MojoLogWrapper(mojoLogger));
         }
 
         if (mojo instanceof Contextualizable) {
@@ -902,6 +917,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         }
     }
 
+    @Override
     public void releaseMojo(Object mojo, MojoExecution mojoExecution) {
         if (mojo != null) {
             try {
@@ -922,6 +938,7 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         }
     }
 
+    @Override
     public ExtensionRealmCache.CacheRecord setupExtensionsRealm(
             MavenProject project, Plugin plugin, RepositorySystemSession session) throws PluginManagerException {
         @SuppressWarnings("unchecked")
@@ -1023,29 +1040,5 @@ public class DefaultMavenPluginManager implements MavenPluginManager {
         DependencyResult root =
                 pluginDependenciesResolver.resolvePlugin(extensionPlugin, null, null, repositories, session);
         return toMavenArtifacts(root);
-    }
-
-    static class NamedImpl implements Named {
-        private final String value;
-
-        NamedImpl(String value) {
-            this.value = value;
-        }
-
-        public String value() {
-            return this.value;
-        }
-
-        public int hashCode() {
-            return 127 * "value".hashCode() ^ this.value.hashCode();
-        }
-
-        public boolean equals(Object o) {
-            return o instanceof Named && this.value.equals(((Named) o).value());
-        }
-
-        public Class<? extends Annotation> annotationType() {
-            return Named.class;
-        }
     }
 }

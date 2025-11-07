@@ -22,7 +22,7 @@
 <model xmlns="http://codehaus-plexus.github.io/MODELLO/2.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xsi:schemaLocation="http://codehaus-plexus.github.io/MODELLO/2.0.0 https://codehaus-plexus.github.io/modello/xsd/modello-2.0.0.xsd"
   xml.namespace="http://maven.apache.org/TOOLCHAINS/${version}"
-  xml.schemaLocation="http://maven.apache.org/xsd/toolchains-${version}.xsd">
+  xml.schemaLocation="https://maven.apache.org/xsd/toolchains-${version}.xsd">
   <id>toolchains</id>
   <name>MavenToolchains</name>
   <description><![CDATA[
@@ -102,6 +102,16 @@
           </association>
         </field>
       </fields>
+      <codeSegments>
+        <codeSegment>
+          <version>1.0.0/1.1.0</version>
+          <code>
+          public void setModelEncoding(String modelEncoding) {
+              update(getDelegate().with().modelEncoding(modelEncoding).build());
+          }
+          </code>
+        </codeSegment>
+      </codeSegments>
     </class>
     <class>
       <name>ToolchainModel</name>
@@ -126,7 +136,7 @@
         <field>
           <name>provides</name>
           <version>1.0.0/1.0.99</version> <!-- fake upperbound, it's inclusive -->
-          <type>DOM</type> <!-- DOM for Maven 2.0.9/2.3.3 -->
+          <type>DOM</type>
           <description>
             Toolchain identification information, which will be matched against project requirements.
             &lt;p>Actual content structure is completely open: each toolchain type will define its own format and
@@ -138,7 +148,7 @@
         <field>
           <name>provides</name>
           <version>1.1.0+</version>
-          <type>Properties</type> <!-- Properties for Maven 2.3.4+ -->
+          <type>Properties</type>
           <association xml.mapStyle="inline">
             <type>String</type>
             <multiplicity>*</multiplicity>
@@ -146,10 +156,6 @@
           <!-- <identifier>true</identifier> -->
           <description>
             Toolchain identification information, which will be matched against project requirements.
-            &lt;p>For Maven 2.0.9 to 3.2.3, the actual content structure was completely open: each toolchain type would
-            define its own format and semantics. This was generally a properties format.
-            &lt;p>Since Maven 3.2.4, the type for this field has been changed to Properties to match the de-facto
-            format.
             &lt;p>Each toolchain defines its own properties names and semantics.
           </description>
         </field>
@@ -186,12 +192,11 @@
     public boolean equals(Object other) {
         if (this == other) {
             return true;
-        } else if (!(other instanceof ToolchainModel)) {
-            return false;
-        } else {
-            ToolchainModel that = (ToolchainModel) other;
+        } else if (other instanceof ToolchainModel that) {
             return java.util.Objects.equals(this.getType(), that.getType())
                 && java.util.Objects.equals(this.getProvides(), that.getProvides());
+        } else {
+            return false;
         }
     } //-- boolean equals(Object)
                 ]]>

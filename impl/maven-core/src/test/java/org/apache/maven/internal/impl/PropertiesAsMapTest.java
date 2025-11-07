@@ -24,6 +24,7 @@ import java.util.NoSuchElementException;
 import java.util.Properties;
 import java.util.Set;
 
+import org.apache.maven.impl.PropertiesAsMap;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -46,13 +47,13 @@ class PropertiesAsMapTest {
         assertEquals(2, set.size());
         Iterator<Entry<String, String>> iterator = set.iterator();
         assertNotNull(iterator);
-        assertTrue(iterator.hasNext());
-        assertTrue(iterator.hasNext());
+        assertTrue(iterator.hasNext(), "Expected " + iterator + ".hasNext() to return true");
+        assertTrue(iterator.hasNext(), "Expected " + iterator + ".hasNext() to return true");
         Entry<String, String> entry = iterator.next();
         assertNotNull(entry);
         entry = iterator.next();
         assertNotNull(entry);
         assertThrows(NoSuchElementException.class, () -> iterator.next());
-        assertFalse(iterator.hasNext());
+        assertFalse(iterator.hasNext(), "Expected " + iterator + ".hasNext() to return false");
     }
 }

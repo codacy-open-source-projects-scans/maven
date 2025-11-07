@@ -255,7 +255,7 @@ public class VersionRange {
         }
 
         ArtifactVersion version = null;
-        if (restrictions.size() > 0) {
+        if (!restrictions.isEmpty()) {
             for (Restriction r : restrictions) {
                 if (recommendedVersion != null && r.containsVersion(recommendedVersion)) {
                     // if we find the original, use that
@@ -398,7 +398,7 @@ public class VersionRange {
         if (recommendedVersion != null) {
             version = recommendedVersion;
         } else {
-            if (restrictions.size() == 0) {
+            if (restrictions.isEmpty()) {
                 throw new OverConstrainedVersionException("The artifact has no valid ranges", artifact);
             }
 
@@ -412,13 +412,14 @@ public class VersionRange {
         if (recommendedVersion != null) {
             value = true;
         } else {
-            if (restrictions.size() == 0) {
+            if (restrictions.isEmpty()) {
                 throw new OverConstrainedVersionException("The artifact has no valid ranges", artifact);
             }
         }
         return value;
     }
 
+    @Override
     public String toString() {
         if (recommendedVersion != null) {
             return recommendedVersion.toString();
@@ -465,19 +466,20 @@ public class VersionRange {
         return !restrictions.isEmpty() && recommendedVersion == null;
     }
 
+    @Override
     public boolean equals(Object obj) {
         if (this == obj) {
             return true;
         }
-        if (!(obj instanceof VersionRange)) {
+        if (obj instanceof VersionRange other) {
+            return Objects.equals(recommendedVersion, other.recommendedVersion)
+                    && Objects.equals(restrictions, other.restrictions);
+        } else {
             return false;
         }
-        VersionRange other = (VersionRange) obj;
-
-        return Objects.equals(recommendedVersion, other.recommendedVersion)
-                && Objects.equals(restrictions, other.restrictions);
     }
 
+    @Override
     public int hashCode() {
         int hash = 7;
         hash = 31 * hash + (recommendedVersion == null ? 0 : recommendedVersion.hashCode());

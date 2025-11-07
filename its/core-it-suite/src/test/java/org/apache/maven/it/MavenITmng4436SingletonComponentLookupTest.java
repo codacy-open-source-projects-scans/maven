@@ -33,10 +33,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class MavenITmng4436SingletonComponentLookupTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng4436SingletonComponentLookupTest() {
-        super("[3.0-alpha-4,)");
-    }
-
     /**
      * Test that lookup of a singleton component works reliably.
      *
@@ -46,7 +42,16 @@ public class MavenITmng4436SingletonComponentLookupTest extends AbstractMavenInt
     public void testit() throws Exception {
         File testDir = extractResources("/mng-4436");
 
-        Verifier verifier = newVerifier(testDir.getAbsolutePath());
+        // First, build the test plugin
+        Verifier verifier = newVerifier(new File(testDir, "maven-it-plugin-singleton-component").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Then, run the test project that uses the plugin
+        verifier = newVerifier(testDir.getAbsolutePath());
         verifier.setAutoclean(false);
         verifier.deleteDirectory("target");
         verifier.addCliArgument("validate");

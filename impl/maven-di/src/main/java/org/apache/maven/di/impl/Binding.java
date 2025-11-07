@@ -21,6 +21,7 @@ package org.apache.maven.di.impl;
 import java.lang.annotation.Annotation;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -30,8 +31,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.maven.di.Key;
-
-import static java.util.stream.Collectors.joining;
 
 public abstract class Binding<T> {
     private final Set<Dependency<?>> dependencies;
@@ -52,6 +51,10 @@ public abstract class Binding<T> {
 
     public static <T> Binding<T> toInstance(T instance) {
         return new BindingToInstance<>(instance);
+    }
+
+    public static <T> Binding<T> toSupplier(Supplier<T> supplier) {
+        return new BindingToSupplier<>(supplier);
     }
 
     public static <R> Binding<R> to(Key<R> originalKey, TupleConstructorN<R> constructor, Class<?>[] types) {
@@ -128,10 +131,6 @@ public abstract class Binding<T> {
         return scope;
     }
 
-    public String getDisplayString() {
-        return dependencies.stream().map(Dependency::getDisplayString).collect(joining(", ", "[", "]"));
-    }
-
     public Key<?> getOriginalKey() {
         return originalKey;
     }
@@ -150,6 +149,10 @@ public abstract class Binding<T> {
         R create(Object... args);
     }
 
+    public static Comparator<Binding<?>> getPriorityComparator() {
+        return Comparator.<Binding<?>>comparingInt(Binding::getPriority).reversed();
+    }
+
     public static class BindingToInstance<T> extends Binding<T> {
         final T instance;
 
@@ -166,6 +169,25 @@ public abstract class Binding<T> {
         @Override
         public String toString() {
             return "BindingToInstance[" + instance + "]" + getDependencies();
+        }
+    }
+
+    public static class BindingToSupplier<T> extends Binding<T> {
+        final Supplier<T> supplier;
+
+        public BindingToSupplier(Supplier<T> supplier) {
+            super(null, Collections.emptySet());
+            this.supplier = supplier;
+        }
+
+        @Override
+        public Supplier<T> compile(Function<Dependency<?>, Supplier<?>> compiler) {
+            return supplier;
+        }
+
+        @Override
+        public String toString() {
+            return "BindingToSupplier[" + supplier + "]" + getDependencies();
         }
     }
 

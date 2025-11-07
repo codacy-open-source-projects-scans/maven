@@ -38,7 +38,7 @@ import org.apache.maven.api.model.PluginContainer;
 import org.apache.maven.api.model.PluginExecution;
 import org.apache.maven.api.services.LifecycleRegistry;
 import org.apache.maven.api.services.PackagingRegistry;
-import org.apache.maven.internal.impl.model.DefaultLifecycleBindingsInjector;
+import org.apache.maven.impl.model.DefaultLifecycleBindingsInjector;
 
 import static org.apache.maven.api.Lifecycle.DEFAULT;
 
@@ -51,7 +51,7 @@ public class EmptyLifecycleBindingsInjector extends DefaultLifecycleBindingsInje
     private static LifecycleRegistry lifecycleRegistry;
     private static PackagingRegistry packagingRegistry;
 
-    private static final LifecycleRegistry emptyLifecycleRegistry = new LifecycleRegistry() {
+    private static final LifecycleRegistry EMPTY_LIFECYCLE_REGISTRY = new LifecycleRegistry() {
 
         @Override
         public Iterator<Lifecycle> iterator() {
@@ -69,7 +69,7 @@ public class EmptyLifecycleBindingsInjector extends DefaultLifecycleBindingsInje
         }
     };
 
-    private static final PackagingRegistry emptyPackagingRegistry = new PackagingRegistry() {
+    private static final PackagingRegistry EMPTY_PACKAGING_REGISTRY = new PackagingRegistry() {
         @Override
         public Optional<Packaging> lookup(String id) {
             return Optional.of(new Packaging() {
@@ -113,8 +113,8 @@ public class EmptyLifecycleBindingsInjector extends DefaultLifecycleBindingsInje
     }
 
     public static void useEmpty() {
-        lifecycleRegistry = emptyLifecycleRegistry;
-        packagingRegistry = emptyPackagingRegistry;
+        lifecycleRegistry = EMPTY_LIFECYCLE_REGISTRY;
+        packagingRegistry = EMPTY_PACKAGING_REGISTRY;
     }
 
     private static Plugin newPlugin(String artifactId, String... goals) {

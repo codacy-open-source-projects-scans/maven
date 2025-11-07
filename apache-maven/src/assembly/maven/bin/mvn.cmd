@@ -35,6 +35,10 @@ title %0
 @REM enable echoing by setting MAVEN_BATCH_ECHO to 'on'
 @if "%MAVEN_BATCH_ECHO%"=="on" echo %MAVEN_BATCH_ECHO%
 
+@REM Clear/define a variable for any options to be inserted via script
+@REM We want to avoid trying to parse the external MAVEN_OPTS variable
+SET INTERNAL_MAVEN_OPTS=
+
 @REM Execute a user defined script before this one
 if not "%MAVEN_SKIP_RC%"=="" goto skipRc
 if exist "%PROGRAMDATA%\mavenrc.cmd" call "%PROGRAMDATA%\mavenrc.cmd" %*
@@ -176,8 +180,35 @@ cd /d "%EXEC_DIR%"
 if not exist "%MAVEN_PROJECTBASEDIR%\.mvn\jvm.config" goto endReadJvmConfig
 
 @setlocal EnableExtensions EnableDelayedExpansion
-for /F "usebackq delims=" %%a in ("%MAVEN_PROJECTBASEDIR%\.mvn\jvm.config") do set JVM_CONFIG_MAVEN_OPTS=!JVM_CONFIG_MAVEN_OPTS! %%a
-@endlocal & set MAVEN_OPTS=%MAVEN_OPTS% %JVM_CONFIG_MAVEN_OPTS%
+set JVM_CONFIG_MAVEN_OPTS=
+for /F "usebackq tokens=* delims=" %%a in ("%MAVEN_PROJECTBASEDIR%\.mvn\jvm.config") do (
+    set "line=%%a"
+
+    rem Skip empty lines and full-line comments
+    echo !line! | findstr /b /r /c:"[ ]*#" >nul
+    if errorlevel 1 (
+        rem Handle end-of-line comments by taking everything before #
+        for /f "tokens=1* delims=#" %%i in ("!line!") do set "line=%%i"
+
+        rem Trim leading/trailing spaces while preserving spaces in quotes
+        set "trimmed=!line!"
+        for /f "tokens=* delims= " %%i in ("!trimmed!") do set "trimmed=%%i"
+        for /l %%i in (1,1,100) do if "!trimmed:~-1!"==" " set "trimmed=!trimmed:~0,-1!"
+
+        rem Replace MAVEN_PROJECTBASEDIR placeholders
+        set "trimmed=!trimmed:${MAVEN_PROJECTBASEDIR}=%MAVEN_PROJECTBASEDIR%!"
+        set "trimmed=!trimmed:$MAVEN_PROJECTBASEDIR=%MAVEN_PROJECTBASEDIR%!"
+
+        if not "!trimmed!"=="" (
+            if "!JVM_CONFIG_MAVEN_OPTS!"=="" (
+                set "JVM_CONFIG_MAVEN_OPTS=!trimmed!"
+            ) else (
+                set "JVM_CONFIG_MAVEN_OPTS=!JVM_CONFIG_MAVEN_OPTS! !trimmed!"
+            )
+        )
+    )
+)
+@endlocal & set JVM_CONFIG_MAVEN_OPTS=%JVM_CONFIG_MAVEN_OPTS%
 
 :endReadJvmConfig
 
@@ -197,11 +228,13 @@ if "%~1"=="--debug" (
         echo Error: Unable to autodetect the YJP library location. Please set YJPLIB variable >&2
         exit /b 1
     )
-    set "MAVEN_OPTS=-agentpath:%YJPLIB%=onexit=snapshot,onexit=memory,tracing,onlylocal %MAVEN_OPTS%"
+    set "INTERNAL_MAVEN_OPTS=-agentpath:%YJPLIB%=onexit=snapshot,onexit=memory,tracing,onlylocal %INTERNAL_MAVEN_OPTS%"
 ) else if "%~1"=="--enc" (
     set "MAVEN_MAIN_CLASS=org.apache.maven.cling.MavenEncCling"
 ) else if "%~1"=="--shell" (
       set "MAVEN_MAIN_CLASS=org.apache.maven.cling.MavenShellCling"
+) else if "%~1"=="--up" (
+      set "MAVEN_MAIN_CLASS=org.apache.maven.cling.MavenUpCling"
 )
 exit /b 0
 
@@ -219,7 +252,9 @@ set LAUNCHER_CLASS=org.codehaus.plexus.classworlds.launcher.Launcher
 if "%MAVEN_MAIN_CLASS%"=="" @set MAVEN_MAIN_CLASS=org.apache.maven.cling.MavenCling
 
 "%JAVACMD%" ^
+  %INTERNAL_MAVEN_OPTS% ^
   %MAVEN_OPTS% ^
+  %JVM_CONFIG_MAVEN_OPTS% ^
   %MAVEN_DEBUG_OPTS% ^
   --enable-native-access=ALL-UNNAMED ^
   -classpath %LAUNCHER_JAR% ^

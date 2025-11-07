@@ -19,14 +19,12 @@ specific language governing permissions and limitations
 under the License.
 -->
 
-<project xmlns="http://maven.apache.org/DECORATION/1.8.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xsi:schemaLocation="http://maven.apache.org/DECORATION/1.8.0 http://maven.apache.org/xsd/decoration-1.8.0.xsd"
+<site xmlns="http://maven.apache.org/SITE/2.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/SITE/2.0.0 https://maven.apache.org/xsd/site-2.0.0.xsd"
   name="Apache Maven">
 
-  <bannerLeft>
-    <name>${project.name}</name>
-    <src>https://maven.apache.org/images/apache-maven-project.png</src>
-    <href>https://maven.apache.org/</href>
+  <bannerLeft href="https://maven.apache.org/">
+    <image src="https://maven.apache.org/images/apache-maven-project.png" alt="Apache Maven" />
   </bannerLeft>
 
   <edit>${project.scm.url}</edit>
@@ -46,10 +44,18 @@ under the License.
       <item name="Download" href="../../download.cgi"/>
     </menu>
 
+    <menu name="User Guide">
+      <item name="Configuring Maven" href="configuring.html"/>
+    </menu>
+
     <menu inherit="bottom" name="Descriptors Reference">
-      <item name="POM" href="./maven-model/maven.html"/>
-      <item name="Settings" href="./maven-settings/settings.html"/>
-      <item name="Toolchains" href="./maven-core/toolchains.html"/>
+      <item name="POM" href="./api/maven-api-model/maven.html"/>
+      <item name="Settings" href="./api/maven-api-settings/settings.html"/>
+      <item name="Toolchains" href="./api/maven-api-toolchain/toolchains.html"/>
+      <item name="Core Extensions" href="./api/maven-api-cli/core-extensions.html"/>
+      <item name="Repository Metadata" href="./api/maven-api-metadata/repository-metadata.html"/>
+      <item name="Plugin Descriptor" href="./api/maven-api-plugin/plugin.html"/>
+      <item name="Lifecycle Descriptor" href="./api/maven-api-plugin/lifecycle.html"/>
     </menu>
 
     <menu inherit="bottom" name="Reference">
@@ -68,4 +74,4 @@ under the License.
     <menu inherit="bottom" ref="modules"/>
     <menu inherit="bottom" ref="reports"/>
   </body>
-</project>
+</site>

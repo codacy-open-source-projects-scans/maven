@@ -45,10 +45,12 @@ public class DefaultArtifactRepositoryFactory implements ArtifactRepositoryFacto
     @Inject
     private Map<String, ArtifactRepositoryLayout> repositoryLayouts;
 
+    @Override
     public ArtifactRepositoryLayout getLayout(String layoutId) throws UnknownRepositoryLayoutException {
         return repositoryLayouts.get(layoutId);
     }
 
+    @Override
     public ArtifactRepository createDeploymentArtifactRepository(
             String id, String url, String layoutId, boolean uniqueVersion) throws UnknownRepositoryLayoutException {
         ArtifactRepositoryLayout layout = repositoryLayouts.get(layoutId);
@@ -65,11 +67,13 @@ public class DefaultArtifactRepositoryFactory implements ArtifactRepositoryFacto
         }
     }
 
+    @Override
     public ArtifactRepository createDeploymentArtifactRepository(
             String id, String url, ArtifactRepositoryLayout repositoryLayout, boolean uniqueVersion) {
         return createArtifactRepository(id, url, repositoryLayout, null, null);
     }
 
+    @Override
     public ArtifactRepository createArtifactRepository(
             String id,
             String url,
@@ -84,6 +88,7 @@ public class DefaultArtifactRepositoryFactory implements ArtifactRepositoryFacto
         return createArtifactRepository(id, url, layout, snapshots, releases);
     }
 
+    @Override
     public ArtifactRepository createArtifactRepository(
             String id,
             String url,
@@ -109,9 +114,8 @@ public class DefaultArtifactRepositoryFactory implements ArtifactRepositoryFacto
         }
 
         ArtifactRepository repository;
-        if (repositoryLayout instanceof ArtifactRepositoryLayout2) {
-            repository = ((ArtifactRepositoryLayout2) repositoryLayout)
-                    .newMavenArtifactRepository(id, url, snapshots, releases);
+        if (repositoryLayout instanceof ArtifactRepositoryLayout2 artifactRepositoryLayout2) {
+            repository = artifactRepositoryLayout2.newMavenArtifactRepository(id, url, snapshots, releases);
         } else {
             repository = new MavenArtifactRepository(id, url, repositoryLayout, snapshots, releases);
         }
@@ -119,10 +123,12 @@ public class DefaultArtifactRepositoryFactory implements ArtifactRepositoryFacto
         return repository;
     }
 
+    @Override
     public void setGlobalUpdatePolicy(String updatePolicy) {
         globalUpdatePolicy = updatePolicy;
     }
 
+    @Override
     public void setGlobalChecksumPolicy(String checksumPolicy) {
         globalChecksumPolicy = checksumPolicy;
     }

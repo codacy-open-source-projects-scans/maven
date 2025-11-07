@@ -27,13 +27,12 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.maven.RepositoryUtils;
 import org.apache.maven.artifact.Artifact;
+import org.apache.maven.impl.cache.Cache;
 import org.apache.maven.lifecycle.LifecycleExecutionException;
 import org.apache.maven.lifecycle.internal.SetWithResolutionResult;
 import org.apache.maven.project.MavenProject;
@@ -141,25 +140,26 @@ public class DefaultProjectArtifactsCache implements ProjectArtifactsCache {
             if (o == this) {
                 return true;
             }
-            if (!(o instanceof CacheKey)) {
+            if (o instanceof CacheKey that) {
+                return Objects.equals(groupId, that.groupId)
+                        && Objects.equals(artifactId, that.artifactId)
+                        && Objects.equals(version, that.version)
+                        && Objects.equals(dependencyArtifacts, that.dependencyArtifacts)
+                        && Objects.equals(workspace, that.workspace)
+                        && Objects.equals(localRepo, that.localRepo)
+                        && RepositoryUtils.repositoriesEquals(repositories, that.repositories)
+                        && Objects.equals(collect, that.collect)
+                        && Objects.equals(resolve, that.resolve)
+                        && aggregating == that.aggregating;
+            } else {
                 return false;
             }
-            CacheKey that = (CacheKey) o;
-            return Objects.equals(groupId, that.groupId)
-                    && Objects.equals(artifactId, that.artifactId)
-                    && Objects.equals(version, that.version)
-                    && Objects.equals(dependencyArtifacts, that.dependencyArtifacts)
-                    && Objects.equals(workspace, that.workspace)
-                    && Objects.equals(localRepo, that.localRepo)
-                    && RepositoryUtils.repositoriesEquals(repositories, that.repositories)
-                    && Objects.equals(collect, that.collect)
-                    && Objects.equals(resolve, that.resolve)
-                    && aggregating == that.aggregating;
         }
     }
 
-    protected final Map<Key, CacheRecord> cache = new ConcurrentHashMap<>();
-    protected final Map<Key, Key> keys = new ConcurrentHashMap<>();
+    protected final Cache<Key, CacheRecord> cache =
+            Cache.newCache(Cache.ReferenceType.SOFT, "ProjectArtifactsCache-Records");
+    protected final Cache<Key, Key> keys = Cache.newCache(Cache.ReferenceType.SOFT, "ProjectArtifactsCache-Keys");
 
     @Override
     public Key createKey(
@@ -193,27 +193,22 @@ public class DefaultProjectArtifactsCache implements ProjectArtifactsCache {
         assertUniqueKey(key);
 
         SetWithResolutionResult artifacts;
-        if (projectArtifacts instanceof SetWithResolutionResult) {
-            artifacts = (SetWithResolutionResult) projectArtifacts;
-        } else if (projectArtifacts instanceof ArtifactsSetWithResult) {
-            artifacts = new SetWithResolutionResult(
-                    ((ArtifactsSetWithResult) projectArtifacts).getResult(), projectArtifacts);
+        if (projectArtifacts instanceof SetWithResolutionResult setWithResolutionResult) {
+            artifacts = setWithResolutionResult;
+        } else if (projectArtifacts instanceof ArtifactsSetWithResult artifactsSetWithResult) {
+            artifacts = new SetWithResolutionResult(artifactsSetWithResult.getResult(), projectArtifacts);
         } else {
             throw new IllegalArgumentException("projectArtifacts must implement ArtifactsSetWithResult");
         }
 
-        CacheRecord record = new CacheRecord(artifacts);
-        cache.put(key, record);
-        return record;
+        return cache.computeIfAbsent(key, k -> new CacheRecord(artifacts));
     }
 
     @Override
     public CacheRecord put(Key key, LifecycleExecutionException exception) {
         Objects.requireNonNull(exception, "exception cannot be null");
         assertUniqueKey(key);
-        CacheRecord record = new CacheRecord(exception);
-        cache.put(key, record);
-        return record;
+        return cache.computeIfAbsent(key, k -> new CacheRecord(exception));
     }
 
     protected void assertUniqueKey(Key key) {

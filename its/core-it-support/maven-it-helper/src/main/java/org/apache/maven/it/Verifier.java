@@ -48,9 +48,11 @@ import java.util.stream.Stream;
 import org.apache.maven.api.cli.ExecutorException;
 import org.apache.maven.api.cli.ExecutorRequest;
 import org.apache.maven.cling.executor.ExecutorHelper;
+import org.apache.maven.cling.executor.ExecutorTool;
 import org.apache.maven.cling.executor.embedded.EmbeddedMavenExecutor;
 import org.apache.maven.cling.executor.forked.ForkedMavenExecutor;
 import org.apache.maven.cling.executor.internal.HelperImpl;
+import org.apache.maven.cling.executor.internal.ToolboxTool;
 import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.StringUtils;
 
@@ -88,6 +90,8 @@ public class Verifier {
 
     private final ExecutorHelper executorHelper;
 
+    private final ExecutorTool executorTool;
+
     private final Path basedir; // the basedir of IT
 
     private final Path tempBasedir; // empty basedir for queries
@@ -101,6 +105,11 @@ public class Verifier {
     private final Map<String, String> environmentVariables = new HashMap<>();
 
     private final List<String> cliArguments = new ArrayList<>();
+
+    private final List<String> jvmArguments = new ArrayList<>();
+
+    // TestSuiteOrdering creates Verifier in non-forked JVM as well, and there no prop set is set (so use default)
+    private final String toolboxVersion = System.getProperty("version.toolbox", "0.14.1");
 
     private Path userHomeDirectory; // the user home
 
@@ -116,8 +125,22 @@ public class Verifier {
 
     private Path logFile;
 
+    private boolean skipMavenRc = true;
+
+    private ByteArrayOutputStream stdout;
+
+    private ByteArrayOutputStream stderr;
+
     public Verifier(String basedir) throws VerificationException {
         this(basedir, null);
+    }
+
+    public Verifier(String basedir, List<String> defaultCliArguments) throws VerificationException {
+        this(basedir, defaultCliArguments, true);
+    }
+
+    public Verifier(String basedir, boolean createDotMvn) throws VerificationException {
+        this(basedir, null, createDotMvn);
     }
 
     /**
@@ -126,22 +149,28 @@ public class Verifier {
      *
      * @param basedir The basedir, cannot be {@code null}
      * @param defaultCliArguments The defaultCliArguments override, may be {@code null}
+     * @param createDotMvn If {@code true}, Verifier will create {@code .mvn} in passed basedir.
      *
      * @see #DEFAULT_CLI_ARGUMENTS
      */
-    public Verifier(String basedir, List<String> defaultCliArguments) throws VerificationException {
+    public Verifier(String basedir, List<String> defaultCliArguments, boolean createDotMvn) throws VerificationException {
         requireNonNull(basedir);
         try {
             this.basedir = Paths.get(basedir).toAbsolutePath();
+            if (createDotMvn) {
+                Files.createDirectories(this.basedir.resolve(".mvn"));
+            }
             this.tempBasedir = Files.createTempDirectory("verifier");
             this.userHomeDirectory = Paths.get(System.getProperty("maven.test.user.home", "user.home"));
             Files.createDirectories(this.userHomeDirectory);
-            this.outerLocalRepository = Paths.get(System.getProperty("maven.test.repo.local", ".m2/repository"));
+            this.outerLocalRepository = Paths.get(System.getProperty("maven.test.repo.outer", ".m2/repository"));
             this.executorHelper = new HelperImpl(
                     VERIFIER_FORK_MODE,
                     Paths.get(System.getProperty("maven.home")),
+                    this.userHomeDirectory,
                     EMBEDDED_MAVEN_EXECUTOR,
                     FORKED_MAVEN_EXECUTOR);
+            this.executorTool = new ToolboxTool(executorHelper, toolboxVersion);
             this.defaultCliArguments =
                     new ArrayList<>(defaultCliArguments != null ? defaultCliArguments : DEFAULT_CLI_ARGUMENTS);
             this.logFile = this.basedir.resolve(logFileName);
@@ -154,12 +183,20 @@ public class Verifier {
         this.userHomeDirectory = requireNonNull(userHomeDirectory, "userHomeDirectory");
     }
 
+    public String getToolboxVersion() {
+        return toolboxVersion;
+    }
+
     public String getExecutable() {
         return executable;
     }
 
     public void setExecutable(String executable) {
         this.executable = requireNonNull(executable);
+    }
+
+    public ExecutorHelper.Mode getDefaultMode() {
+        return executorHelper.getDefaultMode();
     }
 
     public void execute() throws VerificationException {
@@ -178,8 +215,8 @@ public class Verifier {
 
             String itTail = args.stream()
                     .filter(s -> s.startsWith("-Dmaven.repo.local.tail="))
-                    .map(s -> s.substring(24).trim())
                     .findFirst()
+                    .map(s -> s.substring(24).trim())
                     .orElse("");
             if (!itTail.isEmpty()) {
                 // remove it
@@ -206,13 +243,19 @@ public class Verifier {
             args.add(0, "-l");
         }
 
+        // TODO: disable RRF for now until https://github.com/apache/maven-resolver/issues/1641 can be fixed
+        args.add("-Daether.remoteRepositoryFilter.groupId=false");
+        args.add("-Daether.remoteRepositoryFilter.prefixes=false");
+
         try {
             ExecutorRequest.Builder builder = executorHelper
                     .executorRequest()
                     .command(executable)
                     .cwd(basedir)
                     .userHomeDirectory(userHomeDirectory)
-                    .arguments(args);
+                    .jvmArguments(jvmArguments)
+                    .arguments(args)
+                    .skipMavenRc(skipMavenRc);
             if (!systemProperties.isEmpty()) {
                 builder.jvmSystemProperties(new HashMap(systemProperties));
             }
@@ -224,15 +267,14 @@ public class Verifier {
             if (forkJvm) {
                 mode = ExecutorHelper.Mode.FORKED;
             }
-            ByteArrayOutputStream stdout = new ByteArrayOutputStream();
-            ByteArrayOutputStream stderr = new ByteArrayOutputStream();
-            ExecutorRequest request =
-                    builder.stdoutConsumer(stdout).stderrConsumer(stderr).build();
+            stdout = new ByteArrayOutputStream();
+            stderr = new ByteArrayOutputStream();
+            ExecutorRequest request = builder.stdOut(stdout).stdErr(stderr).build();
             int ret = executorHelper.execute(mode, request);
             if (ret > 0) {
                 String dump;
                 try {
-                    dump = executorHelper.dump(request.toBuilder()).toString();
+                    dump = executorTool.dump(request.toBuilder()).toString();
                 } catch (Exception e) {
                     dump = "FAILED: " + e.getMessage();
                 }
@@ -265,6 +307,15 @@ public class Verifier {
     }
 
     /**
+     * Add a jvm argument, each argument must be set separately one by one.
+     *
+     * @param jvmArgument an argument to add
+     */
+    public void addJvmArgument(String jvmArgument) {
+        jvmArguments.add(jvmArgument);
+    }
+
+    /**
      * Add a command line arguments, each argument must be set separately one by one.
      * <p>
      * <code>${basedir}</code> in argument will be replaced by value of {@link #getBasedir()} during execution.
@@ -277,6 +328,19 @@ public class Verifier {
 
     public Properties getSystemProperties() {
         return systemProperties;
+    }
+
+    /**
+     * This method renders all env variables that are used for CI detection (by all known detector) to not trigger.
+     */
+    public void removeCIEnvironmentVariables() {
+        environmentVariables.putAll(Map.of(
+                "CIRCLECI", "",
+                "CI", "false",
+                "GITHUB_ACTIONS", "",
+                "WORKSPACE", "",
+                "TEAMCITY_VERSION", "",
+                "TRAVIS", ""));
     }
 
     public void setEnvironmentVariable(String key, String value) {
@@ -307,6 +371,10 @@ public class Verifier {
         this.forkJvm = forkJvm;
     }
 
+    public void setSkipMavenRc(boolean skipMavenRc) {
+        this.skipMavenRc = skipMavenRc;
+    }
+
     public void setHandleLocalRepoTail(boolean handleLocalRepoTail) {
         this.handleLocalRepoTail = handleLocalRepoTail;
     }
@@ -316,10 +384,7 @@ public class Verifier {
     }
 
     public String getLocalRepositoryWithSettings(String settingsXml) {
-        String outerHead = System.getProperty("maven.repo.local", "").trim();
-        if (!outerHead.isEmpty()) {
-            return outerHead;
-        } else if (settingsXml != null) {
+        if (settingsXml != null) {
             // when invoked with settings.xml, the file must be resolved from basedir (as Maven does)
             // but we should not use basedir, as it may contain extensions.xml or a project, that Maven will eagerly
             // load, and may fail, as it would need more (like CI friendly versioning, etc).
@@ -328,15 +393,20 @@ public class Verifier {
             if (!Files.isRegularFile(settingsFile)) {
                 throw new IllegalArgumentException("settings xml does not exist: " + settingsXml);
             }
-            return executorHelper.localRepository(executorHelper
+            return executorTool.localRepository(executorHelper
                     .executorRequest()
                     .cwd(tempBasedir)
                     .userHomeDirectory(userHomeDirectory)
                     .argument("-s")
                     .argument(settingsFile.toString()));
         } else {
-            return executorHelper.localRepository(
-                    executorHelper.executorRequest().cwd(tempBasedir).userHomeDirectory(userHomeDirectory));
+            String outerHead = System.getProperty("maven.test.repo.local", "").trim();
+            if (!outerHead.isEmpty()) {
+                return outerHead;
+            } else {
+                return executorTool.localRepository(
+                        executorHelper.executorRequest().cwd(tempBasedir).userHomeDirectory(userHomeDirectory));
+            }
         }
     }
 
@@ -427,6 +497,14 @@ public class Verifier {
         if (!result) {
             throw new VerificationException("Text not found in log: " + text);
         }
+    }
+
+    public String getStdout() {
+        return stdout != null ? stdout.toString(StandardCharsets.UTF_8) : "";
+    }
+
+    public String getStderr() {
+        return stderr != null ? stderr.toString(StandardCharsets.UTF_8) : "";
     }
 
     public static String stripAnsi(String msg) {
@@ -562,6 +640,7 @@ public class Verifier {
     private static void addMetadataToList(File dir, boolean hasCommand, List<String> l, String command) {
         if (dir.exists() && dir.isDirectory()) {
             String[] files = dir.list(new FilenameFilter() {
+                @Override
                 public boolean accept(File dir, String name) {
                     return name.startsWith("maven-metadata") && name.endsWith(".xml");
                 }
@@ -632,7 +711,7 @@ public class Verifier {
         }
         return getLocalRepository()
                 + File.separator
-                + executorHelper.artifactPath(executorHelper.executorRequest(), gav, null);
+                + executorTool.artifactPath(executorHelper.executorRequest(), gav, null);
     }
 
     private String getSupportArtifactPath(String artifact) {
@@ -689,7 +768,7 @@ public class Verifier {
             gav = gid + ":" + aid + ":" + ext + ":" + version;
         }
         return outerLocalRepository
-                .resolve(executorHelper.artifactPath(
+                .resolve(executorTool.artifactPath(
                         executorHelper.executorRequest().argument("-Dmaven.repo.local=" + outerLocalRepository),
                         gav,
                         null))
@@ -764,7 +843,7 @@ public class Verifier {
         gav += filename;
         return getLocalRepository()
                 + File.separator
-                + executorHelper.metadataPath(executorHelper.executorRequest(), gav, repoId);
+                + executorTool.metadataPath(executorHelper.executorRequest(), gav, repoId);
     }
 
     /**
@@ -794,7 +873,7 @@ public class Verifier {
      * @since 1.2
      */
     public void deleteArtifacts(String gid) throws IOException {
-        String mdPath = executorHelper.metadataPath(executorHelper.executorRequest(), gid, null);
+        String mdPath = executorTool.metadataPath(executorHelper.executorRequest(), gid, null);
         Path dir = Paths.get(getLocalRepository()).resolve(mdPath).getParent();
         FileUtils.deleteDirectory(dir.toFile());
     }
@@ -814,7 +893,7 @@ public class Verifier {
         requireNonNull(version, "version is null");
 
         String mdPath =
-                executorHelper.metadataPath(executorHelper.executorRequest(), gid + ":" + aid + ":" + version, null);
+                executorTool.metadataPath(executorHelper.executorRequest(), gid + ":" + aid + ":" + version, null);
         Path dir = Paths.get(getLocalRepository()).resolve(mdPath).getParent();
         FileUtils.deleteDirectory(dir.toFile());
     }

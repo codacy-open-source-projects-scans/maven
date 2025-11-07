@@ -52,10 +52,10 @@ class Xpp3DomNodeIterator implements NodeIterator {
 
     private int position;
 
-    public Xpp3DomNodeIterator(NodePointer parent, NodeTest test, boolean reverse, NodePointer startWith) {
+    Xpp3DomNodeIterator(NodePointer parent, NodeTest test, boolean reverse, NodePointer startWith) {
         this.parent = parent;
         this.node = (XmlNode) parent.getNode();
-        this.children = this.node.getChildren();
+        this.children = this.node.children();
         if (startWith != null) {
             Xpp3Dom startWithNode = (Xpp3Dom) startWith.getNode();
             for (; filteredIndex < children.size(); filteredIndex++) {
@@ -71,6 +71,7 @@ class Xpp3DomNodeIterator implements NodeIterator {
         }
     }
 
+    @Override
     public NodePointer getNodePointer() {
         if (position == 0) {
             setPosition(1);
@@ -78,10 +79,12 @@ class Xpp3DomNodeIterator implements NodeIterator {
         return (child == null) ? null : new Xpp3DomNodePointer(parent, child);
     }
 
+    @Override
     public int getPosition() {
         return position;
     }
 
+    @Override
     public boolean setPosition(int position) {
         this.position = position;
         filterChildren(position);
@@ -102,13 +105,12 @@ class Xpp3DomNodeIterator implements NodeIterator {
         if (test == null) {
             return true;
         }
-        if (test instanceof NodeNameTest) {
-            String nodeName = node.getName();
+        if (test instanceof NodeNameTest nodeNameTest) {
+            String nodeName = node.name();
             if (nodeName == null || nodeName.isEmpty()) {
                 return false;
             }
 
-            NodeNameTest nodeNameTest = (NodeNameTest) test;
             String namespaceURI = nodeNameTest.getNamespaceURI();
             boolean wildcard = nodeNameTest.isWildcard();
             String testName = nodeNameTest.getNodeName().getName();
@@ -121,10 +123,10 @@ class Xpp3DomNodeIterator implements NodeIterator {
             }
             return false;
         }
-        if (test instanceof NodeTypeTest) {
-            return switch (((NodeTypeTest) test).getNodeType()) {
+        if (test instanceof NodeTypeTest nodeTypeTest) {
+            return switch (nodeTypeTest.getNodeType()) {
                 case Compiler.NODE_TYPE_NODE -> true;
-                case Compiler.NODE_TYPE_TEXT -> node.getValue() != null;
+                case Compiler.NODE_TYPE_TEXT -> node.value() != null;
                 default -> false;
             };
         }

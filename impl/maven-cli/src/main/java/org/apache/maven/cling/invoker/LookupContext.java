@@ -26,14 +26,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 import org.apache.maven.api.ProtoSession;
 import org.apache.maven.api.cli.InvokerException;
 import org.apache.maven.api.cli.InvokerRequest;
 import org.apache.maven.api.cli.Logger;
+import org.apache.maven.api.cli.Options;
 import org.apache.maven.api.services.Lookup;
 import org.apache.maven.api.settings.Settings;
+import org.apache.maven.api.toolchain.PersistedToolchains;
 import org.apache.maven.cling.logging.Slf4jConfiguration;
 import org.apache.maven.eventspy.internal.EventSpyDispatcher;
 import org.apache.maven.logging.BuildEventListener;
@@ -45,23 +46,19 @@ import static java.util.Objects.requireNonNull;
 @SuppressWarnings("VisibilityModifier")
 public class LookupContext implements AutoCloseable {
     public final InvokerRequest invokerRequest;
-    public final Function<String, Path> cwdResolver;
-    public final Function<String, Path> installationResolver;
-    public final Function<String, Path> userResolver;
+    public final CWD cwd;
+    public final Path installationDirectory;
+    public final Path userDirectory;
     public final boolean containerCapsuleManaged;
+    private final Options options;
 
-    public LookupContext(InvokerRequest invokerRequest) {
-        this(invokerRequest, true);
-    }
-
-    public LookupContext(InvokerRequest invokerRequest, boolean containerCapsuleManaged) {
+    public LookupContext(InvokerRequest invokerRequest, boolean containerCapsuleManaged, Options options) {
         this.invokerRequest = requireNonNull(invokerRequest);
-        this.cwdResolver = s -> invokerRequest.cwd().resolve(s).normalize().toAbsolutePath();
-        this.installationResolver = s ->
-                invokerRequest.installationDirectory().resolve(s).normalize().toAbsolutePath();
-        this.userResolver =
-                s -> invokerRequest.userHomeDirectory().resolve(s).normalize().toAbsolutePath();
+        this.cwd = CWD.create(invokerRequest.cwd());
+        this.installationDirectory = CliUtils.getCanonicalPath(invokerRequest.installationDirectory());
+        this.userDirectory = CliUtils.getCanonicalPath(invokerRequest.userHomeDirectory());
         this.containerCapsuleManaged = containerCapsuleManaged;
+        this.options = options;
         this.logger = invokerRequest.parserRequest().logger();
 
         Map<String, String> user = new HashMap<>(invokerRequest.userProperties());
@@ -79,12 +76,13 @@ public class LookupContext implements AutoCloseable {
                 .build();
     }
 
+    public Logger logger;
+
     // this one "evolves" as process progresses (instance is immutable but instances are replaced)
     public ProtoSession protoSession;
     // here we track which user properties we pushed to Java System Properties (internal only)
     public Set<String> pushedUserProperties;
 
-    public Logger logger;
     public ILoggerFactory loggerFactory;
     public Slf4jConfiguration slf4jConfiguration;
     public Slf4jConfiguration.Level loggerLevel;
@@ -105,6 +103,7 @@ public class LookupContext implements AutoCloseable {
     public boolean interactive;
     public Path localRepositoryPath;
     public Settings effectiveSettings;
+    public PersistedToolchains effectiveToolchains;
 
     public final List<AutoCloseable> closeables = new ArrayList<>();
 
@@ -132,13 +131,13 @@ public class LookupContext implements AutoCloseable {
         }
     }
 
-    public final void closeContainer() {
+    public final void closeContainer() throws Exception {
         if (containerCapsuleManaged) {
             doCloseContainer();
         }
     }
 
-    public void doCloseContainer() {
+    public void doCloseContainer() throws Exception {
         if (containerCapsule != null) {
             try {
                 containerCapsule.close();
@@ -148,5 +147,9 @@ public class LookupContext implements AutoCloseable {
                 containerCapsule = null;
             }
         }
+    }
+
+    public Options options() {
+        return options;
     }
 }

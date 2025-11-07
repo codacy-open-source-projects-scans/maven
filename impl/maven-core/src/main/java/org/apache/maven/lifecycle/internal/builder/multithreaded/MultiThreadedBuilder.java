@@ -85,7 +85,7 @@ public class MultiThreadedBuilder implements Builder {
                 session.getRequest().getDegreeOfConcurrency(),
                 session.getProjects().size());
         boolean parallel = nThreads > 1;
-        // Propagate the parallel flag to the root session and all of the cloned sessions in each project segment
+        // Propagate the parallel flag to the root session and all the cloned sessions in each project segment
         session.setParallel(parallel);
         for (ProjectSegment segment : projectBuilds) {
             segment.getSession().setParallel(parallel);
@@ -99,6 +99,7 @@ public class MultiThreadedBuilder implements Builder {
             try {
                 ConcurrencyDependencyGraph analyzer =
                         new ConcurrencyDependencyGraph(segmentProjectBuilds, session.getProjectDependencyGraph());
+
                 multiThreadedProjectTaskSegmentBuild(
                         analyzer, reactorContext, session, service, taskSegment, projectBuildMap);
                 if (reactorContext.getReactorBuildStatus().isHalted()) {
@@ -131,7 +132,7 @@ public class MultiThreadedBuilder implements Builder {
                 .map(Map.Entry::getKey)
                 .collect(Collectors.toSet());
 
-        // schedule independent projects
+        // schedule independent projects (ordered by critical path priority)
         for (MavenProject mavenProject : analyzer.getRootSchedulableBuilds()) {
             ProjectSegment projectSegment = projectBuildList.get(mavenProject);
             logger.debug("Scheduling: {}", projectSegment.getProject());

@@ -26,13 +26,17 @@ import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.Writer;
+import java.util.AbstractSet;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.InvalidPropertiesFormatException;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -126,23 +130,23 @@ class WrapperProperties extends Properties {
 
     @Override
     public Set<Object> keySet() {
-        return (Set) getter.get().keySet();
+        return new OrderedProperties(getter.get()).keySet();
     }
 
     @Override
     public Collection<Object> values() {
-        return (Collection) getter.get().values();
+        return new OrderedProperties(getter.get()).values();
     }
 
     @Override
     public Set<Map.Entry<Object, Object>> entrySet() {
-        return (Set) getter.get().entrySet();
+        return new OrderedProperties(getter.get()).entrySet();
     }
 
     @Override
     public synchronized boolean equals(Object o) {
-        if (o instanceof WrapperProperties) {
-            o = ((WrapperProperties) o).getter.get();
+        if (o instanceof WrapperProperties wrapperProperties) {
+            o = wrapperProperties.getter.get();
         }
         return getter.get().equals(o);
     }
@@ -154,7 +158,11 @@ class WrapperProperties extends Properties {
 
     @Override
     public Object getOrDefault(Object key, Object defaultValue) {
-        return getter.get().getOrDefault(key, defaultValue != null ? defaultValue.toString() : null);
+        if (key instanceof String str && defaultValue instanceof String def) {
+            return getter.get().getOrDefault(key, def);
+        } else {
+            return defaultValue;
+        }
     }
 
     @Override
@@ -171,8 +179,7 @@ class WrapperProperties extends Properties {
     }
 
     private <T> T writeOperation(WriteOp<T> runner) {
-        Properties props = new Properties();
-        props.putAll(getter.get());
+        OrderedProperties props = new OrderedProperties(getter.get());
         T ret = runner.perform(props);
         if (!props.equals(getter.get())) {
             setter.accept(props);
@@ -181,12 +188,10 @@ class WrapperProperties extends Properties {
     }
 
     private void writeOperationVoid(WriteOpVoid runner) {
-        Properties props = new Properties();
-        props.putAll(getter.get());
-        runner.perform(props);
-        if (!props.equals(getter.get())) {
-            setter.accept(props);
-        }
+        writeOperation(properties -> {
+            runner.perform(properties);
+           return null;
+        });
     }
 
     @Override
@@ -293,23 +298,17 @@ class WrapperProperties extends Properties {
 
     @Override
     public void save(OutputStream out, String comments) {
-        Properties props = new Properties();
-        props.putAll(getter.get());
-        props.save(out, comments);
+        new OrderedProperties(getter.get()).save(out, comments);
     }
 
     @Override
     public void store(Writer writer, String comments) throws IOException {
-        Properties props = new Properties();
-        props.putAll(getter.get());
-        props.store(writer, comments);
+        new OrderedProperties(getter.get()).store(writer, comments);
     }
 
     @Override
     public void store(OutputStream out, String comments) throws IOException {
-        Properties props = new Properties();
-        props.putAll(getter.get());
-        props.store(out, comments);
+        new OrderedProperties(getter.get()).store(out, comments);
     }
 
     @Override
@@ -319,22 +318,147 @@ class WrapperProperties extends Properties {
 
     @Override
     public void storeToXML(OutputStream os, String comment) throws IOException {
-        Properties props = new Properties();
-        props.putAll(getter.get());
-        props.storeToXML(os, comment);
+        new OrderedProperties(getter.get()).storeToXML(os, comment);
     }
 
     @Override
     public void storeToXML(OutputStream os, String comment, String encoding) throws IOException {
-        Properties props = new Properties();
-        props.putAll(getter.get());
-        props.storeToXML(os, comment, encoding);
+        new OrderedProperties(getter.get()).storeToXML(os, comment, encoding);
     }
 
 
     private Object writeReplace() throws java.io.ObjectStreamException {
-        Properties props = new Properties();
-        props.putAll(getter.get());
-        return props;
+        return new OrderedProperties(getter.get());
+    }
+
+    private class OrderedProperties extends Properties {
+        private final List<Object> keyOrder = new CopyOnWriteArrayList<>();
+
+        OrderedProperties(Map<?, ?> map) {
+            putAll(map);
+        }
+
+        @Override
+        public synchronized void putAll(Map<?, ?> t) {
+            t.forEach(this::put);
+        }
+
+        @Override
+        public Set<Object> keySet() {
+            return new KeySet();
+        }
+
+        @Override
+        public Set<Map.Entry<Object, Object>> entrySet() {
+            return new EntrySet();
+        }
+
+        @Override
+        public synchronized Object put(Object key, Object value) {
+            if (!keyOrder.contains(key)) {
+                keyOrder.add(key);
+            }
+            return super.put(key, value);
+        }
+
+        @Override
+        public synchronized Object setProperty(String key, String value) {
+            if (!keyOrder.contains(key)) {
+                keyOrder.add(key);
+            }
+            return super.setProperty(key, value);
+        }
+
+        @Override
+        public synchronized Object remove(Object key) {
+            keyOrder.remove(key);
+            return super.remove(key);
+        }
+
+        @Override
+        public synchronized void forEach(BiConsumer<? super Object, ? super Object> action) {
+            entrySet().forEach(e -> action.accept(e.getKey(), e.getValue()));
+        }
+
+        private class EntrySet extends AbstractSet<Map.Entry<Object, Object>> {
+            @Override
+            public Iterator<Map.Entry<Object, Object>> iterator() {
+                return new Iterator<Map.Entry<Object, Object>>() {
+                    Iterator<Object> keyIterator = keyOrder.iterator();
+                    @Override
+                    public boolean hasNext() {
+                        return keyIterator.hasNext();
+                    }
+
+                    @Override
+                    public Map.Entry<Object, Object> next() {
+                        Object key = keyIterator.next();
+                        return new Map.Entry<>() {
+                            @Override
+                            public Object getKey() {
+                                return key;
+                            }
+
+                            @Override
+                            public Object getValue() {
+                                return get(key);
+                            }
+
+                            @Override
+                            public Object setValue(Object value) {
+                                return WrapperProperties.this.put(key, value);
+                            }
+                        };
+                    }
+                };
+            }
+
+            @Override
+            public int size() {
+                return keyOrder.size();
+            }
+        }
+
+        private class KeySet extends AbstractSet<Object> {
+            public Iterator<Object> iterator() {
+                final Iterator<Object> iter = keyOrder.iterator();
+                return new Iterator<Object>() {
+                    Object lastRet = null;
+                    @Override
+                    public boolean hasNext() {
+                        return iter.hasNext();
+                    }
+
+                    @Override
+                    public Object next() {
+                        lastRet = iter.next();
+                        return lastRet;
+                    }
+
+                    @Override
+                    public void remove() {
+                        WrapperProperties.super.remove(lastRet);
+                    }
+                };
+            }
+
+            public int size() {
+                return keyOrder.size();
+            }
+
+            public boolean contains(Object o) {
+                return containsKey(o);
+            }
+
+            public boolean remove(Object o) {
+                boolean b = WrapperProperties.this.containsKey(o);
+                WrapperProperties.this.remove(o);
+                return b;
+            }
+
+            public void clear() {
+                WrapperProperties.this.clear();
+            }
+        }
     }
 }

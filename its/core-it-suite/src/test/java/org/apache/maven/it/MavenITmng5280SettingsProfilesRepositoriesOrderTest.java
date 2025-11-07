@@ -49,10 +49,6 @@ public class MavenITmng5280SettingsProfilesRepositoriesOrderTest extends Abstrac
 
     private Server server;
 
-    public MavenITmng5280SettingsProfilesRepositoriesOrderTest() {
-        super("[3.1-A,)");
-    }
-
     @BeforeEach
     protected void setUp() throws Exception {
         testDir = extractResources("/mng-5280");
@@ -148,7 +144,7 @@ public class MavenITmng5280SettingsProfilesRepositoriesOrderTest extends Abstrac
                 PrintWriter writer = response.getWriter();
 
                 if (uri.endsWith(".pom")) {
-                    writer.println("<project>");
+                    writer.println("<project xmlns=\"http://maven.apache.org/POM/4.0.0\">");
                     writer.println("  <modelVersion>4.0.0</modelVersion>");
                     writer.println("  <groupId>org.apache.maven.its.mng5280</groupId>");
                     writer.println("  <artifactId>fake-artifact</artifactId>");

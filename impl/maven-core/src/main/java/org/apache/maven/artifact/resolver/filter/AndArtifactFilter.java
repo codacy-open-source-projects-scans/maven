@@ -41,6 +41,7 @@ public class AndArtifactFilter implements ArtifactFilter {
         this.filters = new LinkedHashSet<>(filters);
     }
 
+    @Override
     public boolean include(Artifact artifact) {
         boolean include = true;
         for (Iterator<ArtifactFilter> i = filters.iterator(); i.hasNext() && include; ) {
@@ -73,12 +74,10 @@ public class AndArtifactFilter implements ArtifactFilter {
             return true;
         }
 
-        if (!(obj instanceof AndArtifactFilter)) {
+        if (obj instanceof AndArtifactFilter other) {
+            return filters.equals(other.filters);
+        } else {
             return false;
         }
-
-        AndArtifactFilter other = (AndArtifactFilter) obj;
-
-        return filters.equals(other.filters);
     }
 }

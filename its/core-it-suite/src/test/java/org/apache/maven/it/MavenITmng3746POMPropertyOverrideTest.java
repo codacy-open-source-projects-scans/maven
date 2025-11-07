@@ -29,14 +29,13 @@ import org.junit.jupiter.api.Test;
  *
  * @author <a href="mailto:brianf@apache.org">Brian Fox</a>
  * @author jdcasey
+ * @since 2.0.8
+ *
  */
 public class MavenITmng3746POMPropertyOverrideTest extends AbstractMavenIntegrationTestCase {
-    public MavenITmng3746POMPropertyOverrideTest() {
-        super("(2.0.8,)"); // only test in 2.0.9+
-    }
 
     @Test
-    public void testitMNG3746_UsingDefaultSystemProperty() throws Exception {
+    public void testitMNG3746UsingDefaultSystemProperty() throws Exception {
         // The testdir is computed from the location of this
         // file.
         File testDir = extractResources("/mng-3746");
@@ -59,7 +58,7 @@ public class MavenITmng3746POMPropertyOverrideTest extends AbstractMavenIntegrat
     }
 
     @Test
-    public void testitMNG3746_UsingCLIProperty() throws Exception {
+    public void testitMNG3746UsingCLIProperty() throws Exception {
         // The testdir is computed from the location of this
         // file.
         File testDir = extractResources("/mng-3746");

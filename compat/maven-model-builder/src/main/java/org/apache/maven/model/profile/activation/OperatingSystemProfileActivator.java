@@ -34,7 +34,7 @@ import org.apache.maven.utils.Os;
  * Determines profile activation based on the operating system of the current runtime platform.
  *
  * @see ActivationOS
- * @deprecated use {@link org.apache.maven.api.services.ModelBuilder} instead
+ * @deprecated use {@code org.apache.maven.api.services.ModelBuilder} instead
  */
 @Named("os")
 @Singleton
@@ -95,7 +95,10 @@ public class OperatingSystemProfileActivator implements ProfileActivator {
 
         ActivationOS os = activation.getOs();
 
-        return os != null;
+        if (os == null) {
+            return false;
+        }
+        return true;
     }
 
     private boolean ensureAtLeastOneNonNull(ActivationOS os) {
@@ -130,7 +133,7 @@ public class OperatingSystemProfileActivator implements ProfileActivator {
 
         boolean result = actualArch.equals(test);
 
-        return reverse != result;
+        return reverse ? !result : result;
     }
 
     private boolean determineNameMatch(String expectedName, String actualName) {
@@ -144,7 +147,7 @@ public class OperatingSystemProfileActivator implements ProfileActivator {
 
         boolean result = actualName.equals(test);
 
-        return reverse != result;
+        return reverse ? !result : result;
     }
 
     private boolean determineFamilyMatch(String family, String actualName) {
@@ -158,6 +161,6 @@ public class OperatingSystemProfileActivator implements ProfileActivator {
 
         boolean result = Os.isFamily(test, actualName);
 
-        return reverse != result;
+        return reverse ? !result : result;
     }
 }

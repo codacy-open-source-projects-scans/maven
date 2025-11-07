@@ -23,7 +23,7 @@ under the License.
   <parent>
     <groupId>org.apache.maven</groupId>
     <artifactId>maven</artifactId>
-    <version>4.0.0-rc-3-SNAPSHOT</version>
+    <version>4.1.0-SNAPSHOT</version>
   </parent>
 
   <artifactId>apache-maven</artifactId>
@@ -128,7 +128,6 @@ under the License.
     <dependency>
       <groupId>org.eclipse.sisu</groupId>
       <artifactId>org.eclipse.sisu.inject</artifactId>
-      <classifier>no_asm</classifier>
     </dependency>
     <dependency>
       <groupId>com.google.inject</groupId>
@@ -138,19 +137,6 @@ under the License.
     <dependency>
       <groupId>org.ow2.asm</groupId>
       <artifactId>asm</artifactId>
-    </dependency>
-
-    <dependency>
-      <groupId>org.apache.maven.resolver</groupId>
-      <artifactId>maven-resolver-tools</artifactId>
-      <version>${resolverVersion}</version>
-      <scope>test</scope>
-      <exclusions>
-        <exclusion>
-          <groupId>org.slf4j</groupId>
-          <artifactId>slf4j-nop</artifactId>
-        </exclusion>
-      </exclusions>
     </dependency>
   </dependencies>
 
@@ -235,7 +221,7 @@ under the License.
       <plugin>
         <groupId>eu.maveniverse.maven.plugins</groupId>
         <artifactId>bom-builder3</artifactId>
-        <version>1.0.3</version>
+        <version>1.3.0</version>
         <executions>
           <execution>
             <id>skinny-bom</id>
@@ -247,6 +233,8 @@ under the License.
               <bomName>Maven Dependencies Skinny BOM</bomName>
               <bomDescription>Bill Of Materials for Apache Maven - Maven JARS only</bomDescription>
               <outputFilename>maven-skinny-bom.xml</outputFilename>
+              <reactorDependencies>REACTOR</reactorDependencies>
+              <transitiveDependencies>NONE</transitiveDependencies>
               <usePropertiesForVersion>true</usePropertiesForVersion>
               <attach>true</attach>
             </configuration>
@@ -261,41 +249,10 @@ under the License.
               <bomName>Maven Dependencies Fat BOM</bomName>
               <bomDescription>Bill Of Materials for Apache Maven - All dependencies</bomDescription>
               <outputFilename>maven-fat-bom.xml</outputFilename>
-              <useDependencies>PROJECT_AND_TRANSITIVE</useDependencies>
+              <reactorDependencies>REACTOR</reactorDependencies>
+              <transitiveDependencies>CURRENT_PROJECT</transitiveDependencies>
               <usePropertiesForVersion>true</usePropertiesForVersion>
               <attach>true</attach>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>exec-maven-plugin</artifactId>
-        <version>3.5.0</version>
-        <executions>
-          <execution>
-            <id>render-configuration-page</id>
-            <goals>
-              <goal>java</goal>
-            </goals>
-            <phase>verify</phase>
-            <configuration>
-              <classpathScope>test</classpathScope>
-              <additionalClasspathElements>
-                <additionalClasspathElement>${basedir}/src/test/resources</additionalClasspathElement>
-              </additionalClasspathElements>
-              <mainClass>org.eclipse.aether.tools.CollectConfiguration</mainClass>
-              <arguments>
-                <argument>--mode=maven</argument>
-                <!--
-                TODO: templates are loaded from classpath, in "normal" JAR project local template would override docgen one,
-                but in this case the packaging=pom all I could do is use additionalClasspathElement that APPENDS classpath,
-                hence template is renamed to maven-configuration.md.vm, to avoid conflict (and picking up resolver template)
-                -->
-                <argument>--templates=maven-configuration.md,configuration.properties,configuration.yaml</argument>
-                <argument>${basedir}/..</argument>
-                <argument>${basedir}/../src/site/markdown/</argument>
-              </arguments>
             </configuration>
           </execution>
         </executions>

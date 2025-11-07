@@ -19,6 +19,7 @@
 package org.apache.maven.api.services;
 
 import java.util.List;
+import java.util.Objects;
 
 import org.apache.maven.api.ArtifactCoordinates;
 import org.apache.maven.api.RemoteRepository;
@@ -28,29 +29,23 @@ import org.apache.maven.api.annotations.Nonnull;
 import org.apache.maven.api.annotations.NotThreadSafe;
 import org.apache.maven.api.annotations.Nullable;
 
-import static org.apache.maven.api.services.BaseRequest.nonNull;
+import static java.util.Objects.requireNonNull;
 
 /**
  *
  * @since 4.0.0
  */
 @Experimental
-public interface VersionResolverRequest {
-
-    @Nonnull
-    Session getSession();
+public interface VersionResolverRequest extends RepositoryAwareRequest {
 
     @Nonnull
     ArtifactCoordinates getArtifactCoordinates();
 
-    @Nullable
-    List<RemoteRepository> getRepositories();
-
     @Nonnull
     static VersionResolverRequest build(@Nonnull Session session, @Nonnull ArtifactCoordinates artifactCoordinates) {
         return builder()
-                .session(nonNull(session, "session cannot be null"))
-                .artifactCoordinates(nonNull(artifactCoordinates, "artifactCoordinates cannot be null"))
+                .session(requireNonNull(session, "session cannot be null"))
+                .artifactCoordinates(requireNonNull(artifactCoordinates, "artifactCoordinates cannot be null"))
                 .build();
     }
 
@@ -60,8 +55,8 @@ public interface VersionResolverRequest {
             @Nonnull ArtifactCoordinates artifactCoordinates,
             @Nullable List<RemoteRepository> repositories) {
         return builder()
-                .session(nonNull(session, "session cannot be null"))
-                .artifactCoordinates(nonNull(artifactCoordinates, "artifactCoordinates cannot be null"))
+                .session(requireNonNull(session, "session cannot be null"))
+                .artifactCoordinates(requireNonNull(artifactCoordinates, "artifactCoordinates cannot be null"))
                 .repositories(repositories)
                 .build();
     }
@@ -74,11 +69,17 @@ public interface VersionResolverRequest {
     @NotThreadSafe
     class VersionResolverRequestBuilder {
         Session session;
+        RequestTrace trace;
         ArtifactCoordinates artifactCoordinates;
         List<RemoteRepository> repositories;
 
         public VersionResolverRequestBuilder session(Session session) {
             this.session = session;
+            return this;
+        }
+
+        public VersionResolverRequestBuilder trace(RequestTrace trace) {
+            this.trace = trace;
             return this;
         }
 
@@ -93,7 +94,7 @@ public interface VersionResolverRequest {
         }
 
         public VersionResolverRequest build() {
-            return new DefaultVersionResolverRequest(session, artifactCoordinates, repositories);
+            return new DefaultVersionResolverRequest(session, trace, artifactCoordinates, repositories);
         }
 
         private static class DefaultVersionResolverRequest extends BaseRequest<Session>
@@ -104,11 +105,12 @@ public interface VersionResolverRequest {
             @SuppressWarnings("checkstyle:ParameterNumber")
             DefaultVersionResolverRequest(
                     @Nonnull Session session,
+                    @Nullable RequestTrace trace,
                     @Nonnull ArtifactCoordinates artifactCoordinates,
                     @Nullable List<RemoteRepository> repositories) {
-                super(session);
+                super(session, trace);
                 this.artifactCoordinates = artifactCoordinates;
-                this.repositories = repositories;
+                this.repositories = validate(repositories);
             }
 
             @Nonnull
@@ -121,6 +123,25 @@ public interface VersionResolverRequest {
             @Override
             public List<RemoteRepository> getRepositories() {
                 return repositories;
+            }
+
+            @Override
+            public boolean equals(Object o) {
+                return o instanceof DefaultVersionResolverRequest that
+                        && Objects.equals(artifactCoordinates, that.artifactCoordinates)
+                        && Objects.equals(repositories, that.repositories);
+            }
+
+            @Override
+            public int hashCode() {
+                return Objects.hash(artifactCoordinates, repositories);
+            }
+
+            @Override
+            public String toString() {
+                return "VersionResolverRequest[" + "artifactCoordinates="
+                        + artifactCoordinates + ", repositories="
+                        + repositories + ']';
             }
         }
     }

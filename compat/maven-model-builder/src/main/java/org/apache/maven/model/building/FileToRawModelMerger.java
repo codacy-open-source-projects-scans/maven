@@ -41,7 +41,7 @@ import org.apache.maven.model.v4.MavenMerger;
  * All others can simply be copied from source to target to restore the locationTracker
  *
  * @since 4.0.0
- * @deprecated use {@link org.apache.maven.api.services.ModelBuilder} instead
+ * @deprecated use {@code org.apache.maven.api.services.ModelBuilder} instead
  */
 @Deprecated(since = "4.0.0")
 class FileToRawModelMerger extends MavenMerger {
@@ -136,6 +136,12 @@ class FileToRawModelMerger extends MavenMerger {
         builder.profiles(target.getProfiles().stream()
                 .map(d -> mergeProfile(d, sourceIterator.next(), sourceDominant, context))
                 .collect(Collectors.toList()));
+    }
+
+    @Override
+    protected void mergeModel_Mixins(
+            Model.Builder builder, Model target, Model source, boolean sourceDominant, Map<Object, Object> context) {
+        // don't merge
     }
 
     @Override

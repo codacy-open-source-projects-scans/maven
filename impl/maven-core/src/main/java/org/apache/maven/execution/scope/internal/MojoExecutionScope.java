@@ -33,13 +33,14 @@ import org.apache.maven.plugin.MojoExecutionException;
 /**
  * MojoExecutionScope
  */
-public class MojoExecutionScope extends org.apache.maven.internal.impl.di.MojoExecutionScope
+public class MojoExecutionScope extends org.apache.maven.impl.di.MojoExecutionScope
         implements Scope, MojoExecutionListener {
 
     public <T> void seed(Class<T> clazz, Provider<T> value) {
         getScopeState().seed(clazz, value::get);
     }
 
+    @Override
     public <T> Provider<T> scope(final Key<T> key, Provider<T> unscoped) {
         Object qualifier = key.getAnnotation() instanceof Named n ? n.value() : key.getAnnotation();
         org.apache.maven.di.Key<T> k =
@@ -51,18 +52,21 @@ public class MojoExecutionScope extends org.apache.maven.internal.impl.di.MojoEx
         return MojoExecutionScope.<T>seededKeySupplier(clazz)::get;
     }
 
+    @Override
     public void beforeMojoExecution(MojoExecutionEvent event) throws MojoExecutionException {
         for (WeakMojoExecutionListener provided : getProvidedListeners()) {
             provided.beforeMojoExecution(event);
         }
     }
 
+    @Override
     public void afterMojoExecutionSuccess(MojoExecutionEvent event) throws MojoExecutionException {
         for (WeakMojoExecutionListener provided : getProvidedListeners()) {
             provided.afterMojoExecutionSuccess(event);
         }
     }
 
+    @Override
     public void afterExecutionFailure(MojoExecutionEvent event) {
         for (WeakMojoExecutionListener provided : getProvidedListeners()) {
             provided.afterExecutionFailure(event);
@@ -74,8 +78,8 @@ public class MojoExecutionScope extends org.apache.maven.internal.impl.di.MojoEx
         // deduplicate instances to avoid redundant beforeXXX/afterXXX callbacks
         IdentityHashMap<WeakMojoExecutionListener, Object> listeners = new IdentityHashMap<>();
         for (Object provided : getScopeState().provided()) {
-            if (provided instanceof WeakMojoExecutionListener) {
-                listeners.put((WeakMojoExecutionListener) provided, null);
+            if (provided instanceof WeakMojoExecutionListener weakMojoExecutionListener) {
+                listeners.put(weakMojoExecutionListener, null);
             }
         }
         return listeners.keySet();

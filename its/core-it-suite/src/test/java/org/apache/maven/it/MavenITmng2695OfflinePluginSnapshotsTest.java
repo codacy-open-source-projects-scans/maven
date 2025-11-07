@@ -32,10 +32,6 @@ import org.junit.jupiter.api.Test;
  */
 public class MavenITmng2695OfflinePluginSnapshotsTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng2695OfflinePluginSnapshotsTest() {
-        super("(2.0.9,2.1.0-M1),(2.1.0-M1,)"); // only test in 2.0.10+, and not in 2.1.0-M1
-    }
-
     /**
      * Verify that snapshot plugins which are scheduled for an update don't fail the build when in offline mode.
      *
@@ -44,38 +40,35 @@ public class MavenITmng2695OfflinePluginSnapshotsTest extends AbstractMavenInteg
     @Test
     public void testitMNG2695() throws Exception {
         File testDir = extractResources("/mng-2695");
+        Verifier verifier;
 
-        {
-            // phase 1: run build in online mode to fill local repo
-            Verifier verifier = newVerifier(testDir.getAbsolutePath());
-            verifier.deleteDirectory("target");
-            verifier.deleteArtifacts("org.apache.maven.its.mng2695");
-            verifier.setAutoclean(false);
-            verifier.setLogFileName("log1.txt");
-            verifier.filterFile("settings-template.xml", "settings.xml");
-            verifier.addCliArgument("--settings");
-            verifier.addCliArgument("settings.xml");
-            verifier.addCliArgument("validate");
-            verifier.execute();
-            verifier.verifyFilePresent("target/a.txt");
-            verifier.verifyFilePresent("target/b.txt");
-            verifier.verifyErrorFreeLog();
-        }
+        // phase 1: run build in online mode to fill local repo
+        verifier = newVerifier(testDir.getAbsolutePath());
+        verifier.deleteDirectory("target");
+        verifier.deleteArtifacts("org.apache.maven.its.mng2695");
+        verifier.setAutoclean(false);
+        verifier.setLogFileName("log1.txt");
+        verifier.filterFile("settings-template.xml", "settings.xml");
+        verifier.addCliArgument("--settings");
+        verifier.addCliArgument("settings.xml");
+        verifier.addCliArgument("validate");
+        verifier.execute();
+        verifier.verifyFilePresent("target/a.txt");
+        verifier.verifyFilePresent("target/b.txt");
+        verifier.verifyErrorFreeLog();
 
-        {
-            // phase 2: run build in offline mode to check it still passes
-            Verifier verifier = newVerifier(testDir.getAbsolutePath());
-            verifier.deleteDirectory("target");
-            verifier.setAutoclean(false);
-            verifier.setLogFileName("log2.txt");
-            verifier.addCliArgument("--settings");
-            verifier.addCliArgument("settings.xml");
-            verifier.addCliArgument("--offline");
-            verifier.addCliArgument("validate");
-            verifier.execute();
-            verifier.verifyFilePresent("target/a.txt");
-            verifier.verifyFilePresent("target/b.txt");
-            verifier.verifyErrorFreeLog();
-        }
+        // phase 2: run build in offline mode to check it still passes
+        verifier = newVerifier(testDir.getAbsolutePath());
+        verifier.deleteDirectory("target");
+        verifier.setAutoclean(false);
+        verifier.setLogFileName("log2.txt");
+        verifier.addCliArgument("--settings");
+        verifier.addCliArgument("settings.xml");
+        verifier.addCliArgument("--offline");
+        verifier.addCliArgument("validate");
+        verifier.execute();
+        verifier.verifyFilePresent("target/a.txt");
+        verifier.verifyFilePresent("target/b.txt");
+        verifier.verifyErrorFreeLog();
     }
 }

@@ -66,8 +66,10 @@ public class TestRepositoryConnector implements RepositoryConnector {
         }
     }
 
+    @Override
     public void close() {}
 
+    @Override
     public void get(
             Collection<? extends ArtifactDownload> artifactDownloads,
             Collection<? extends MetadataDownload> metadataDownloads) {
@@ -128,15 +130,20 @@ public class TestRepositoryConnector implements RepositoryConnector {
     private String path(Metadata metadata) {
         StringBuilder path = new StringBuilder(128);
 
-        path.append(metadata.getGroupId().replace('.', '/')).append('/');
+        if (!metadata.getGroupId().isBlank()) {
+            path.append(metadata.getGroupId().replace('.', '/')).append('/');
+        }
 
-        path.append(metadata.getArtifactId()).append('/');
+        if (!metadata.getArtifactId().isBlank()) {
+            path.append(metadata.getArtifactId()).append('/');
+        }
 
-        path.append("maven-metadata.xml");
+        path.append(metadata.getType());
 
         return path.toString();
     }
 
+    @Override
     public void put(
             Collection<? extends ArtifactUpload> artifactUploads,
             Collection<? extends MetadataUpload> metadataUploads) {

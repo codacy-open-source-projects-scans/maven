@@ -24,7 +24,7 @@ import javax.inject.Singleton;
 
 import org.apache.maven.SessionScoped;
 import org.apache.maven.api.Session;
-import org.apache.maven.internal.impl.di.OutOfScopeException;
+import org.apache.maven.impl.di.OutOfScopeException;
 import org.apache.maven.session.scope.internal.SessionScope;
 import org.codehaus.plexus.PlexusContainer;
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
@@ -63,9 +63,9 @@ public class SessionScopeProxyTest {
         MySingletonBean bean = container.lookup(MySingletonBean.class);
         assertNotNull(bean);
         assertNotNull(bean.anotherBean);
-        assertSame(bean.anotherBean.getClass(), AnotherBean.class);
+        assertSame(AnotherBean.class, bean.anotherBean.getClass());
         assertNotNull(bean.myBean);
-        assertNotSame(bean.myBean.getClass(), MySessionScopedBean.class);
+        assertNotSame(MySessionScopedBean.class, bean.myBean.getClass());
 
         assertThrows(OutOfScopeException.class, () -> bean.myBean.getSession());
 
@@ -73,7 +73,7 @@ public class SessionScopeProxyTest {
         sessionScope.seed(Session.class, this.session);
         assertNotNull(bean.myBean.getSession());
         assertNotNull(bean.myBean.getAnotherBean());
-        assertSame(bean.myBean.getAnotherBean().getClass(), AnotherBean.class);
+        assertSame(AnotherBean.class, bean.myBean.getAnotherBean().getClass());
         assertThrows(TestException.class, () -> bean.myBean.throwException());
     }
 
@@ -123,14 +123,17 @@ public class SessionScopeProxyTest {
         @Inject
         BeanItf2 anotherBean;
 
+        @Override
         public Session getSession() {
             return session;
         }
 
+        @Override
         public BeanItf2 getAnotherBean() {
             return anotherBean;
         }
 
+        @Override
         public void throwException() throws TestException {
             throw new TestException();
         }

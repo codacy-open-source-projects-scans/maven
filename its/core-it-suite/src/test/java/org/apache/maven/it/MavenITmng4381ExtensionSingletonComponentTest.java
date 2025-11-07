@@ -32,10 +32,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 public class MavenITmng4381ExtensionSingletonComponentTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng4381ExtensionSingletonComponentTest() {
-        super("[3.0-alpha-3,)");
-    }
-
     /**
      * Test that extension plugins can contribute non-core components that can be accessed by other plugins in the same
      * project and in projects with the same extension.
@@ -46,7 +42,17 @@ public class MavenITmng4381ExtensionSingletonComponentTest extends AbstractMaven
     public void testit() throws Exception {
         File testDir = extractResources("/mng-4381");
 
-        Verifier verifier = newVerifier(testDir.getAbsolutePath());
+        // First, build the test plugin
+        Verifier verifier =
+                newVerifier(new File(testDir, "sub-a/maven-it-plugin-extension-consumer").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Then, run the test project that uses the plugin
+        verifier = newVerifier(testDir.getAbsolutePath());
         verifier.setAutoclean(false);
         verifier.deleteDirectory("sub-a/target");
         verifier.deleteDirectory("sub-b/target");

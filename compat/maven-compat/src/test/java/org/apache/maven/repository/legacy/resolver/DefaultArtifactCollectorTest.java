@@ -293,6 +293,7 @@ class DefaultArtifactCollectorTest {
     }
 
     @Test
+    @SuppressWarnings("checkstyle:UnusedLocalVariable")
     void testResolveRangeWithManagedVersion() throws ArtifactResolutionException, InvalidVersionSpecificationException {
         ArtifactSpec a = createArtifactSpec("a", "1.0");
         ArtifactSpec b = a.addDependency("b", "[1.0,3.0]");
@@ -332,7 +333,7 @@ class DefaultArtifactCollectorTest {
 
         ArtifactResolutionResult res = collect(a);
 
-        assertTrue(res.hasVersionRangeViolations());
+        assertTrue(res.hasVersionRangeViolations(), "Expected " + res + ".hasVersionRangeViolations() to return true");
     }
 
     @Test
@@ -345,7 +346,7 @@ class DefaultArtifactCollectorTest {
 
         ArtifactResolutionResult res = collect(a);
 
-        assertTrue(res.hasVersionRangeViolations());
+        assertTrue(res.hasVersionRangeViolations(), "Expected " + res + ".hasVersionRangeViolations() to return true");
     }
 
     @Test
@@ -370,7 +371,7 @@ class DefaultArtifactCollectorTest {
 
         ArtifactResolutionResult res = collect(a);
 
-        assertTrue(res.hasVersionRangeViolations());
+        assertTrue(res.hasVersionRangeViolations(), "Expected " + res + ".hasVersionRangeViolations() to return true");
     }
 
     @Test
@@ -664,7 +665,7 @@ class DefaultArtifactCollectorTest {
 
         ArtifactResolutionResult res = collect(a);
 
-        assertTrue(res.hasVersionRangeViolations());
+        assertTrue(res.hasVersionRangeViolations(), "Expected " + res + ".hasVersionRangeViolations() to return true");
 
         /*
          * try { ArtifactResolutionResult res = collect( a ); fail( "Expected b not to resolve: " + res ); } catch (
@@ -675,6 +676,7 @@ class DefaultArtifactCollectorTest {
 
     @Test
     @Disabled("that one does not work")
+    @SuppressWarnings("checkstyle:UnusedLocalVariable")
     void testOverConstrainedVersionException()
             throws ArtifactResolutionException, InvalidVersionSpecificationException {
         ArtifactSpec a = createArtifactSpec("a", "1.0");
@@ -826,12 +828,13 @@ class DefaultArtifactCollectorTest {
 
         private Map<String, List<ArtifactVersion>> versions = new HashMap<>();
 
+        @Override
         public ResolutionGroup retrieve(
                 Artifact artifact, ArtifactRepository localRepository, List<ArtifactRepository> remoteRepositories)
                 throws ArtifactMetadataRetrievalException {
             String key = getKey(artifact);
 
-            ArtifactSpec a = (ArtifactSpec) artifacts.get(key);
+            ArtifactSpec a = artifacts.get(key);
             try {
                 return new ResolutionGroup(
                         artifact,
@@ -899,12 +902,14 @@ class DefaultArtifactCollectorTest {
             }
         }
 
+        @Override
         public List<ArtifactVersion> retrieveAvailableVersions(
                 Artifact artifact, ArtifactRepository localRepository, List<ArtifactRepository> remoteRepositories)
                 throws ArtifactMetadataRetrievalException {
             return retrieveAvailableVersions(artifact);
         }
 
+        @Override
         public List<ArtifactVersion> retrieveAvailableVersionsFromDeploymentRepository(
                 Artifact artifact, ArtifactRepository localRepository, ArtifactRepository remoteRepository)
                 throws ArtifactMetadataRetrievalException {
@@ -919,10 +924,12 @@ class DefaultArtifactCollectorTest {
             return artifactVersions;
         }
 
+        @Override
         public ResolutionGroup retrieve(MetadataResolutionRequest request) throws ArtifactMetadataRetrievalException {
             return retrieve(request.getArtifact(), request.getLocalRepository(), request.getRemoteRepositories());
         }
 
+        @Override
         public List<ArtifactVersion> retrieveAvailableVersions(MetadataResolutionRequest request)
                 throws ArtifactMetadataRetrievalException {
             return retrieveAvailableVersions(

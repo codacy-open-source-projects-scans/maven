@@ -29,10 +29,6 @@ import org.junit.jupiter.api.Test;
  */
 public class MavenITmng4207PluginWithLog4JTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng4207PluginWithLog4JTest() {
-        super("[2.0.3,)");
-    }
-
     /**
      * Test that a plugin that depends on log4j and employs the artifact resolver does not die when using
      * commons-http to resolve an artifact.
@@ -43,7 +39,16 @@ public class MavenITmng4207PluginWithLog4JTest extends AbstractMavenIntegrationT
     public void testit() throws Exception {
         File testDir = extractResources("/mng-4207");
 
-        Verifier verifier = newVerifier(testDir.getAbsolutePath());
+        // First, build the test plugin
+        Verifier verifier = newVerifier(new File(testDir, "maven-it-plugin-log4j").getAbsolutePath());
+        verifier.setAutoclean(false);
+        verifier.deleteDirectory("target");
+        verifier.addCliArgument("install");
+        verifier.execute();
+        verifier.verifyErrorFreeLog();
+
+        // Then, run the test project that uses the plugin
+        verifier = newVerifier(testDir.getAbsolutePath());
         verifier.setAutoclean(false);
         verifier.deleteArtifacts("org.apache.maven.its.mng4207");
         verifier.addCliArgument("-s");

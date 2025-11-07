@@ -21,10 +21,13 @@ package org.apache.maven.cling.invoker;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.UnaryOperator;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.DefaultParser;
@@ -34,12 +37,19 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.ParseException;
 import org.apache.maven.api.cli.Options;
 import org.apache.maven.api.cli.ParserRequest;
+import org.apache.maven.api.services.Interpolator;
+import org.apache.maven.api.services.InterpolatorException;
 import org.apache.maven.jline.MessageUtils;
 
 import static java.util.Objects.requireNonNull;
-import static org.apache.maven.cling.invoker.Utils.toMap;
+import static org.apache.maven.cling.invoker.CliUtils.createInterpolator;
+import static org.apache.maven.cling.invoker.CliUtils.toMap;
 
-public abstract class CommonsCliOptions implements Options {
+public class CommonsCliOptions implements Options {
+    public static CommonsCliOptions parse(String source, String[] args) throws ParseException {
+        CLIManager cliManager = new CLIManager();
+        return new CommonsCliOptions(source, cliManager, cliManager.parse(args));
+    }
 
     protected final String source;
     protected final CLIManager cliManager;
@@ -251,6 +261,35 @@ public abstract class CommonsCliOptions implements Options {
     }
 
     @Override
+    public final Options interpolate(UnaryOperator<String> callback) {
+        try {
+            // now that we have properties, interpolate all arguments
+            Interpolator interpolator = createInterpolator();
+            CommandLine.Builder commandLineBuilder = CommandLine.builder();
+            commandLineBuilder.setDeprecatedHandler(o -> {});
+            for (Option option : commandLine.getOptions()) {
+                if (!CommonsCliOptions.CLIManager.USER_PROPERTY.equals(option.getOpt())) {
+                    List<String> values = option.getValuesList();
+                    for (ListIterator<String> it = values.listIterator(); it.hasNext(); ) {
+                        it.set(interpolator.interpolate(it.next(), callback));
+                    }
+                }
+                commandLineBuilder.addOption(option);
+            }
+            for (String arg : commandLine.getArgList()) {
+                commandLineBuilder.addArg(interpolator.interpolate(arg, callback));
+            }
+            return copy(source, cliManager, commandLineBuilder.get());
+        } catch (InterpolatorException e) {
+            throw new IllegalArgumentException("Could not interpolate CommonsCliOptions", e);
+        }
+    }
+
+    protected CommonsCliOptions copy(String source, CLIManager cliManager, CommandLine commandLine) {
+        return new CommonsCliOptions(source, cliManager, commandLine);
+    }
+
+    @Override
     public void displayHelp(ParserRequest request, Consumer<String> printStream) {
         cliManager.displayHelp(request.command(), printStream);
     }
@@ -263,6 +302,7 @@ public abstract class CommonsCliOptions implements Options {
         public static final String VERBOSE = "X";
 
         public static final String SHOW_ERRORS = "e";
+
         public static final String FAIL_ON_SEVERITY = "fos";
         public static final String NON_INTERACTIVE = "non-interactive";
         public static final String BATCH_MODE = "B";
@@ -278,9 +318,13 @@ public abstract class CommonsCliOptions implements Options {
         public static final String OFFLINE = "o";
         public static final String HELP = "h";
 
+        // Not an Option: used only for early detection, when CLI args may not be even parsed
+        public static final String SHOW_ERRORS_CLI_ARG = "-" + SHOW_ERRORS;
+
         // parameters handled by script
         public static final String DEBUG = "debug";
         public static final String ENC = "enc";
+        public static final String UPGRADE = "up";
         public static final String SHELL = "shell";
         public static final String YJP = "yjp";
 
@@ -304,112 +348,116 @@ public abstract class CommonsCliOptions implements Options {
             options.addOption(Option.builder(HELP)
                     .longOpt("help")
                     .desc("Display help information")
-                    .build());
+                    .get());
             options.addOption(Option.builder(USER_PROPERTY)
                     .numberOfArgs(2)
                     .valueSeparator('=')
                     .desc("Define a user property")
-                    .build());
+                    .get());
             options.addOption(Option.builder(SHOW_VERSION_AND_EXIT)
                     .longOpt("version")
                     .desc("Display version information")
-                    .build());
+                    .get());
             options.addOption(Option.builder(QUIET)
                     .longOpt("quiet")
                     .desc("Quiet output - only show errors")
-                    .build());
+                    .get());
             options.addOption(Option.builder(VERBOSE)
                     .longOpt("verbose")
                     .desc("Produce execution verbose output")
-                    .build());
+                    .get());
             options.addOption(Option.builder(SHOW_ERRORS)
                     .longOpt("errors")
                     .desc("Produce execution error messages")
-                    .build());
+                    .get());
             options.addOption(Option.builder(BATCH_MODE)
                     .longOpt("batch-mode")
                     .desc("Run in non-interactive mode. Alias for --non-interactive (kept for backwards compatability)")
-                    .build());
+                    .get());
             options.addOption(Option.builder()
                     .longOpt(NON_INTERACTIVE)
                     .desc("Run in non-interactive mode. Alias for --batch-mode")
-                    .build());
+                    .get());
             options.addOption(Option.builder()
                     .longOpt(FORCE_INTERACTIVE)
                     .desc(
                             "Run in interactive mode. Overrides, if applicable, the CI environment variable and --non-interactive/--batch-mode options")
-                    .build());
+                    .get());
             options.addOption(Option.builder(ALTERNATE_USER_SETTINGS)
                     .longOpt("settings")
                     .desc("Alternate path for the user settings file")
                     .hasArg()
-                    .build());
+                    .get());
             options.addOption(Option.builder(ALTERNATE_PROJECT_SETTINGS)
                     .longOpt("project-settings")
                     .desc("Alternate path for the project settings file")
                     .hasArg()
-                    .build());
+                    .get());
             options.addOption(Option.builder(ALTERNATE_INSTALLATION_SETTINGS)
                     .longOpt("install-settings")
                     .desc("Alternate path for the installation settings file")
                     .hasArg()
-                    .build());
+                    .get());
             options.addOption(Option.builder(ALTERNATE_USER_TOOLCHAINS)
                     .longOpt("toolchains")
                     .desc("Alternate path for the user toolchains file")
                     .hasArg()
-                    .build());
+                    .get());
             options.addOption(Option.builder(ALTERNATE_INSTALLATION_TOOLCHAINS)
                     .longOpt("install-toolchains")
                     .desc("Alternate path for the installation toolchains file")
                     .hasArg()
-                    .build());
+                    .get());
             options.addOption(Option.builder(FAIL_ON_SEVERITY)
                     .longOpt("fail-on-severity")
                     .desc("Configure which severity of logging should cause the build to fail")
                     .hasArg()
-                    .build());
+                    .get());
             options.addOption(Option.builder(LOG_FILE)
                     .longOpt("log-file")
                     .hasArg()
                     .desc("Log file where all build output will go (disables output color)")
-                    .build());
+                    .get());
             options.addOption(Option.builder()
                     .longOpt(RAW_STREAMS)
                     .desc("Do not decorate standard output and error streams")
-                    .build());
+                    .get());
             options.addOption(Option.builder(SHOW_VERSION)
                     .longOpt("show-version")
                     .desc("Display version information WITHOUT stopping build")
-                    .build());
+                    .get());
             options.addOption(Option.builder()
                     .longOpt(COLOR)
                     .hasArg()
                     .optionalArg(true)
                     .desc("Defines the color mode of the output. Supported are 'auto', 'always', 'never'.")
-                    .build());
+                    .get());
             options.addOption(Option.builder(OFFLINE)
                     .longOpt("offline")
                     .desc("Work offline")
-                    .build());
+                    .get());
 
             // Parameters handled by script
             options.addOption(Option.builder()
                     .longOpt(DEBUG)
                     .desc("Launch the JVM in debug mode (script option).")
-                    .build());
+                    .get());
             options.addOption(Option.builder()
                     .longOpt(ENC)
                     .desc("Launch the Maven Encryption tool (script option).")
-                    .build());
+                    .get());
+            options.addOption(Option.builder()
+                    .longOpt(UPGRADE)
+                    .desc("Launch the Maven Upgrade tool (script option).")
+                    .get());
             options.addOption(Option.builder()
                     .longOpt(SHELL)
                     .desc("Launch the Maven Shell tool (script option).")
-                    .build());
+                    .get());
             options.addOption(Option.builder()
                     .longOpt(YJP)
                     .desc("Launch the JVM with Yourkit profiler (script option).")
-                    .build());
+                    .get());
 
             // Deprecated
             options.addOption(Option.builder(ALTERNATE_GLOBAL_SETTINGS)
@@ -421,7 +469,7 @@ public abstract class CommonsCliOptions implements Options {
                             .setSince("4.0.0")
                             .setDescription("Use -is,--install-settings instead.")
                             .get())
-                    .build());
+                    .get());
             options.addOption(Option.builder(ALTERNATE_GLOBAL_TOOLCHAINS)
                     .longOpt("global-toolchains")
                     .desc("<deprecated> Alternate path for the global toolchains file.")
@@ -431,7 +479,7 @@ public abstract class CommonsCliOptions implements Options {
                             .setSince("4.0.0")
                             .setDescription("Use -it,--install-toolchains instead.")
                             .get())
-                    .build());
+                    .get());
         }
 
         public CommandLine parse(String[] args) throws ParseException {
@@ -439,7 +487,7 @@ public abstract class CommonsCliOptions implements Options {
             String[] cleanArgs = CleanArgument.cleanArgs(args);
             DefaultParser parser = DefaultParser.builder()
                     .setDeprecatedHandler(this::addDeprecatedOption)
-                    .build();
+                    .get();
             CommandLine commandLine = parser.parse(options, cleanArgs);
             // to trigger deprecation handler, so we can report deprecation BEFORE we actually use options
             options.getOptions().forEach(commandLine::hasOption);
@@ -487,7 +535,7 @@ public abstract class CommonsCliOptions implements Options {
         }
 
         protected String commandLineSyntax(String command) {
-            return command + " [options] [goals]";
+            return command + " [options] [<goal|phase> ...]";
         }
     }
 }

@@ -32,6 +32,7 @@ public class SystemStreamLog implements Log {
     /**
      * @see org.apache.maven.plugin.logging.Log#debug(java.lang.CharSequence)
      */
+    @Override
     public void debug(CharSequence content) {
         print("debug", content);
     }
@@ -39,6 +40,7 @@ public class SystemStreamLog implements Log {
     /**
      * @see org.apache.maven.plugin.logging.Log#debug(java.lang.CharSequence, java.lang.Throwable)
      */
+    @Override
     public void debug(CharSequence content, Throwable error) {
         print("debug", content, error);
     }
@@ -46,6 +48,7 @@ public class SystemStreamLog implements Log {
     /**
      * @see org.apache.maven.plugin.logging.Log#debug(java.lang.Throwable)
      */
+    @Override
     public void debug(Throwable error) {
         print("debug", error);
     }
@@ -53,6 +56,7 @@ public class SystemStreamLog implements Log {
     /**
      * @see org.apache.maven.plugin.logging.Log#info(java.lang.CharSequence)
      */
+    @Override
     public void info(CharSequence content) {
         print("info", content);
     }
@@ -60,6 +64,7 @@ public class SystemStreamLog implements Log {
     /**
      * @see org.apache.maven.plugin.logging.Log#info(java.lang.CharSequence, java.lang.Throwable)
      */
+    @Override
     public void info(CharSequence content, Throwable error) {
         print("info", content, error);
     }
@@ -67,6 +72,7 @@ public class SystemStreamLog implements Log {
     /**
      * @see org.apache.maven.plugin.logging.Log#info(java.lang.Throwable)
      */
+    @Override
     public void info(Throwable error) {
         print("info", error);
     }
@@ -74,6 +80,7 @@ public class SystemStreamLog implements Log {
     /**
      * @see org.apache.maven.plugin.logging.Log#warn(java.lang.CharSequence)
      */
+    @Override
     public void warn(CharSequence content) {
         print("warn", content);
     }
@@ -81,6 +88,7 @@ public class SystemStreamLog implements Log {
     /**
      * @see org.apache.maven.plugin.logging.Log#warn(java.lang.CharSequence, java.lang.Throwable)
      */
+    @Override
     public void warn(CharSequence content, Throwable error) {
         print("warn", content, error);
     }
@@ -88,6 +96,7 @@ public class SystemStreamLog implements Log {
     /**
      * @see org.apache.maven.plugin.logging.Log#warn(java.lang.Throwable)
      */
+    @Override
     public void warn(Throwable error) {
         print("warn", error);
     }
@@ -95,6 +104,7 @@ public class SystemStreamLog implements Log {
     /**
      * @see org.apache.maven.plugin.logging.Log#error(java.lang.CharSequence)
      */
+    @Override
     public void error(CharSequence content) {
         System.err.println("[error] " + content.toString());
     }
@@ -102,31 +112,33 @@ public class SystemStreamLog implements Log {
     /**
      * @see org.apache.maven.plugin.logging.Log#error(java.lang.CharSequence, java.lang.Throwable)
      */
+    @Override
     public void error(CharSequence content, Throwable error) {
         StringWriter sWriter = new StringWriter();
         PrintWriter pWriter = new PrintWriter(sWriter);
 
         error.printStackTrace(pWriter);
 
-        System.err.println(
-                "[error] " + content.toString() + System.lineSeparator() + System.lineSeparator() + sWriter.toString());
+        System.err.println("[error] " + content + System.lineSeparator() + System.lineSeparator() + sWriter);
     }
 
     /**
      * @see org.apache.maven.plugin.logging.Log#error(java.lang.Throwable)
      */
+    @Override
     public void error(Throwable error) {
         StringWriter sWriter = new StringWriter();
         PrintWriter pWriter = new PrintWriter(sWriter);
 
         error.printStackTrace(pWriter);
 
-        System.err.println("[error] " + sWriter.toString());
+        System.err.println("[error] " + sWriter);
     }
 
     /**
      * @see org.apache.maven.plugin.logging.Log#isDebugEnabled()
      */
+    @Override
     public boolean isDebugEnabled() {
         // TODO Not sure how best to set these for this implementation...
         return false;
@@ -135,6 +147,7 @@ public class SystemStreamLog implements Log {
     /**
      * @see org.apache.maven.plugin.logging.Log#isInfoEnabled()
      */
+    @Override
     public boolean isInfoEnabled() {
         return true;
     }
@@ -142,6 +155,7 @@ public class SystemStreamLog implements Log {
     /**
      * @see org.apache.maven.plugin.logging.Log#isWarnEnabled()
      */
+    @Override
     public boolean isWarnEnabled() {
         return true;
     }
@@ -149,6 +163,7 @@ public class SystemStreamLog implements Log {
     /**
      * @see org.apache.maven.plugin.logging.Log#isErrorEnabled()
      */
+    @Override
     public boolean isErrorEnabled() {
         return true;
     }
@@ -163,7 +178,7 @@ public class SystemStreamLog implements Log {
 
         error.printStackTrace(pWriter);
 
-        System.out.println("[" + prefix + "] " + sWriter.toString());
+        System.out.println("[" + prefix + "] " + sWriter);
     }
 
     private void print(String prefix, CharSequence content, Throwable error) {
@@ -172,7 +187,6 @@ public class SystemStreamLog implements Log {
 
         error.printStackTrace(pWriter);
 
-        System.out.println("[" + prefix + "] " + content.toString() + System.lineSeparator() + System.lineSeparator()
-                + sWriter.toString());
+        System.out.println("[" + prefix + "] " + content + System.lineSeparator() + System.lineSeparator() + sWriter);
     }
 }

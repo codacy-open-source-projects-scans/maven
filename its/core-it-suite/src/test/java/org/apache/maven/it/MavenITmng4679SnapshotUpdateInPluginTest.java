@@ -32,10 +32,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 public class MavenITmng4679SnapshotUpdateInPluginTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng4679SnapshotUpdateInPluginTest() {
-        super("[2.0.3,3.0-alpha-1),[3.0-beta-2,)");
-    }
-
     /**
      * Verify that plugins using the 2.x style artifact resolver/collector directly are subject to the snapshot update
      * mode of the current Maven session.
@@ -62,7 +58,7 @@ public class MavenITmng4679SnapshotUpdateInPluginTest extends AbstractMavenInteg
         verifier.verifyErrorFreeLog();
 
         assertChecksum(verifier, "jar", "2ea5c3d713bbaba7b87746449b91cd00e876703d");
-        assertChecksum(verifier, "pom", "0b58dbbc61f81b85a70692ffdce88cf1892a8da4");
+        assertChecksum(verifier, "pom", "d6883b610a0e087464ece92ac1e7f2b8e742e71f");
 
         filterProps.put("@repo@", "repo-2");
         verifier.filterFile("settings-template.xml", "settings.xml", filterProps);
@@ -74,7 +70,7 @@ public class MavenITmng4679SnapshotUpdateInPluginTest extends AbstractMavenInteg
         verifier.verifyErrorFreeLog();
 
         assertChecksum(verifier, "jar", "f3d46277c2ab45ff9bbd97605c942bed7fc27f97");
-        assertChecksum(verifier, "pom", "127f0dc26035352bb54890315ad7d2ada067756a");
+        assertChecksum(verifier, "pom", "ddfa2de1fd5765bbd72829841abfa7a1fde7ff21");
     }
 
     private void assertChecksum(Verifier verifier, String ext, String checksum) throws Exception {

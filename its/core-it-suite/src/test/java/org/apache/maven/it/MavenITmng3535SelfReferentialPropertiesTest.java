@@ -29,12 +29,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  */
 public class MavenITmng3535SelfReferentialPropertiesTest extends AbstractMavenIntegrationTestCase {
 
-    public MavenITmng3535SelfReferentialPropertiesTest() {
-        super("[2.1.0-M1,3.0-alpha-1),[3.0-alpha-3,)");
-    }
-
     @Test
-    public void testitMNG3535_ShouldSucceed() throws Exception {
+    public void testitMNG3535ShouldSucceed() throws Exception {
         File testDir = extractResources("/mng-3535/success");
 
         Verifier verifier = newVerifier(testDir.getAbsolutePath());
@@ -44,22 +40,17 @@ public class MavenITmng3535SelfReferentialPropertiesTest extends AbstractMavenIn
         verifier.setAutoclean(false);
         verifier.addCliArgument("verify");
 
-        if (matchesVersionRange("[4.0.0-beta-5,)")) {
-            assertThrows(
-                    Exception.class,
-                    () -> {
-                        verifier.execute();
-                        verifier.verifyErrorFreeLog();
-                    },
-                    "There is a self-referential property in this build; it should fail.");
-        } else {
-            verifier.execute();
-            verifier.verifyErrorFreeLog();
-        }
+        assertThrows(
+                Exception.class,
+                () -> {
+                    verifier.execute();
+                    verifier.verifyErrorFreeLog();
+                },
+                "There is a self-referential property in this build; it should fail.");
     }
 
     @Test
-    public void testitMNG3535_ShouldFail() throws Exception {
+    public void testitMNG3535ShouldFail() throws Exception {
         File testDir = extractResources("/mng-3535/failure");
 
         Verifier verifier = newVerifier(testDir.getAbsolutePath());
