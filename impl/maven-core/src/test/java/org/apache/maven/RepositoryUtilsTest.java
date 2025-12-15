@@ -16,22 +16,20 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.maven.plugin;
+package org.apache.maven;
 
-import java.util.function.Consumer;
+import org.apache.maven.artifact.Artifact;
+import org.eclipse.aether.graph.Dependency;
+import org.junit.jupiter.api.Test;
 
-import org.apache.maven.plugin.descriptor.PluginDescriptor;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
-/**
- * Service responsible for checking if plugin's prerequisites are met.
- */
-@FunctionalInterface
-public interface MavenPluginPrerequisitesChecker extends Consumer<PluginDescriptor> {
-    /**
-     *
-     * @param pluginDescriptor the plugin descriptor to check
-     * @throws IllegalStateException in case the checked prerequisites are not met
-     */
-    @Override
-    void accept(PluginDescriptor pluginDescriptor);
+class RepositoryUtilsTest {
+
+    @Test
+    void testToArtifactMethodsReturnNullWhenInputParameterIsNull() {
+        assertNull(RepositoryUtils.toArtifact((Dependency) null));
+        assertNull(RepositoryUtils.toArtifact((Artifact) null));
+        assertNull(RepositoryUtils.toArtifact((org.apache.maven.artifact.Artifact) null));
+    }
 }

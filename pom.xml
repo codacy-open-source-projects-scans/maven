@@ -157,11 +157,11 @@ under the License.
     <jmhVersion>1.37</jmhVersion>
     <junitVersion>6.0.1</junitVersion>
     <jxpathVersion>1.4.0</jxpathVersion>
-    <logbackClassicVersion>1.5.21</logbackClassicVersion>
-    <mockitoVersion>5.20.0</mockitoVersion>
+    <logbackClassicVersion>1.5.22</logbackClassicVersion>
+    <mockitoVersion>5.21.0</mockitoVersion>
     <plexusInteractivityVersion>1.5.1</plexusInteractivityVersion>
     <plexusInterpolationVersion>1.29</plexusInterpolationVersion>
-    <plexusTestingVersion>2.0.1</plexusTestingVersion>
+    <plexusTestingVersion>2.0.2</plexusTestingVersion>
     <plexusXmlVersion>4.1.0</plexusXmlVersion>
     <resolverVersion>2.0.13</resolverVersion>
     <securityDispatcherVersion>4.1.0</securityDispatcherVersion>
@@ -684,7 +684,7 @@ under the License.
       <dependency>
         <groupId>eu.maveniverse.maven.mimir</groupId>
         <artifactId>testing</artifactId>
-        <version>0.10.4</version>
+        <version>0.10.6</version>
       </dependency>
     </dependencies>
     <!--bootstrap-start-comment-->
@@ -788,7 +788,7 @@ under the License.
             <dependency>
               <groupId>net.sourceforge.pmd</groupId>
               <artifactId>pmd-core</artifactId>
-              <version>7.18.0</version>
+              <version>7.19.0</version>
             </dependency>
           </dependencies>
         </plugin>
