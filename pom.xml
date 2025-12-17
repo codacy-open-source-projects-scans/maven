@@ -142,7 +142,7 @@ under the License.
     <maven.site.path>ref/4-LATEST</maven.site.path>
     <project.build.outputTimestamp>2025-06-24T20:18:00Z</project.build.outputTimestamp>
     <!-- various versions -->
-    <asmVersion>9.9</asmVersion>
+    <asmVersion>9.9.1</asmVersion>
     <byteBuddyVersion>1.18.2</byteBuddyVersion>
     <classWorldsVersion>2.9.0</classWorldsVersion>
     <commonsCliVersion>1.11.0</commonsCliVersion>
@@ -163,7 +163,7 @@ under the License.
     <plexusInterpolationVersion>1.29</plexusInterpolationVersion>
     <plexusTestingVersion>2.0.2</plexusTestingVersion>
     <plexusXmlVersion>4.1.0</plexusXmlVersion>
-    <resolverVersion>2.0.13</resolverVersion>
+    <resolverVersion>2.0.14</resolverVersion>
     <securityDispatcherVersion>4.1.0</securityDispatcherVersion>
     <sisuVersion>0.9.0.M4</sisuVersion>
     <slf4jVersion>2.0.17</slf4jVersion>
