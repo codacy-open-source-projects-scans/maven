@@ -43,6 +43,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.maven.api.Constants;
 import org.apache.maven.api.model.Model;
 import org.apache.maven.api.services.Lookup;
 import org.apache.maven.eventspy.EventSpy;
@@ -159,8 +160,9 @@ class ReactorReader implements MavenWorkspaceReader {
     //
 
     private File findArtifact(MavenProject project, Artifact artifact, boolean checkUptodate) {
-        // POMs are always returned from the file system
-        if ("pom".equals(artifact.getExtension())) {
+        // Unclassified POMs are always returned from the file system
+        if ("pom".equals(artifact.getExtension())
+                && (artifact.getClassifier() == null || artifact.getClassifier().isEmpty())) {
             return project.getFile();
         }
 
@@ -352,6 +354,13 @@ class ReactorReader implements MavenWorkspaceReader {
      * The mojo started event is also captured to determine the lifecycle
      * phases the project has been through.
      *
+     * <p>When a project enters its clean phase, its artifacts are cleaned from the
+     * project-local-repo (per-GAV scope). Since the project-local-repo is located
+     * under {@code .mvn/target/} (not under the project's own {@code target/}),
+     * it is not affected by maven-clean-plugin's deletion of {@code target/},
+     * eliminating the race condition between clean and install operations in
+     * parallel builds.</p>
+     *
      * @param event the execution event
      */
     private void processEvent(ExecutionEvent event) {
@@ -364,9 +373,7 @@ class ReactorReader implements MavenWorkspaceReader {
                     if (!Objects.equals(phase, phases.peekLast())) {
                         phases.addLast(phase);
                         if ("clean".equals(phase)) {
-                            synchronized (project) {
-                                cleanProjectLocalRepository(project);
-                            }
+                            cleanProjectLocalRepository(project);
                         }
                     }
                 }
@@ -402,6 +409,13 @@ class ReactorReader implements MavenWorkspaceReader {
         }
     }
 
+    /**
+     * Cleans the project-local-repo artifacts for the given project's GAV coordinates.
+     * Since the project-local-repo is under {@code .mvn/target/} and not the project's
+     * own {@code target/}, it is not affected by maven-clean-plugin's deletion of
+     * {@code target/}, so there is no race between clean and install operations
+     * in parallel builds.
+     */
     private void cleanProjectLocalRepository(MavenProject project) {
         try {
             Path artifactPath = getProjectLocalRepo()
@@ -411,19 +425,32 @@ class ReactorReader implements MavenWorkspaceReader {
             if (Files.isDirectory(artifactPath)) {
                 try (Stream<Path> paths = Files.list(artifactPath)) {
                     for (Path path : (Iterable<Path>) paths::iterator) {
-                        Files.delete(path);
+                        Files.deleteIfExists(path);
                     }
                 }
-                try {
-                    Files.delete(artifactPath);
-                    Files.delete(artifactPath.getParent());
-                    Files.delete(artifactPath.getParent().getParent());
-                } catch (DirectoryNotEmptyException e) {
-                    // ignore
-                }
+                deleteIfEmpty(artifactPath);
+                deleteIfEmpty(artifactPath.getParent());
+                deleteIfEmpty(artifactPath.getParent().getParent());
+                deleteIfEmpty(getProjectLocalRepo());
+                deleteIfEmpty(getProjectLocalRepo().getParent());
             }
         } catch (IOException e) {
             LOGGER.error("Error while cleaning project local repository", e);
+        }
+    }
+
+    /**
+     * Deletes {@code dir} if it exists and is empty, silently ignoring non-empty directories.
+     * Used to prune the per-GAV, groupId, {@code project-local-repo}, and {@code .mvn/target}
+     * directory hierarchy after a project's clean phase so that no empty remnants are left.
+     */
+    private void deleteIfEmpty(Path dir) {
+        try {
+            Files.deleteIfExists(dir);
+        } catch (DirectoryNotEmptyException e) {
+            // Directory still has content (other modules' artifacts) — leave it alone.
+        } catch (IOException e) {
+            LOGGER.warn("Failed to delete directory {}", dir, e);
         }
     }
 
@@ -505,17 +532,13 @@ class ReactorReader implements MavenWorkspaceReader {
     private Path getProjectLocalRepo() {
         if (projectLocalRepository == null) {
             Path root = session.getRequest().getRootDirectory();
-            List<MavenProject> projects = session.getProjects();
-            if (projects != null) {
-                projectLocalRepository = projects.stream()
-                        .filter(project -> Objects.equals(root.toFile(), project.getBasedir()))
-                        .findFirst()
-                        .map(project -> project.getBuild().getDirectory())
-                        .map(Paths::get)
-                        .orElseGet(() -> root.resolve("target"))
-                        .resolve(PROJECT_LOCAL_REPO);
+            String userPath =
+                    session.getRequest().getUserProperties().getProperty(Constants.MAVEN_REACTOR_OUTPUT_REPOSITORY);
+            if (userPath != null && !userPath.isEmpty()) {
+                Path path = Paths.get(userPath);
+                projectLocalRepository = path.isAbsolute() ? path : root.resolve(path);
             } else {
-                return root.resolve("target").resolve(PROJECT_LOCAL_REPO);
+                projectLocalRepository = root.resolve(".mvn").resolve("target").resolve(PROJECT_LOCAL_REPO);
             }
         }
         return projectLocalRepository;

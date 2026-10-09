@@ -48,6 +48,8 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -93,9 +95,11 @@ class ProjectBuilderTest extends AbstractCoreMavenComponentTestCase {
         ProjectBuildingRequest configuration = new DefaultProjectBuildingRequest();
         configuration.setRepositorySession(mavenSession.getRepositorySession());
 
-        ProjectBuildingException e = assertThrows(ProjectBuildingException.class, () -> getContainer()
-                .lookup(org.apache.maven.project.ProjectBuilder.class)
-                .build(pomFile, configuration));
+        ProjectBuildingException e = assertThrows(
+                ProjectBuildingException.class,
+                () -> getContainer()
+                        .lookup(org.apache.maven.project.ProjectBuilder.class)
+                        .build(pomFile, configuration));
         assertEquals(1, e.getResults().size());
         ProjectBuildingResultWithProblemMessageAssert.assertThat(e.getResults().get(0))
                 .hasProblemMessage(
@@ -186,6 +190,222 @@ class ProjectBuilderTest extends AbstractCoreMavenComponentTestCase {
         // re-build pom with modified parent
         ProjectBuildingResult result = projectBuilder.build(child, configuration);
         assertTrue(result.getProject().getProperties().containsKey("addedProperty"));
+    }
+
+    @Test
+    void testDeepParentHierarchy(@TempDir Path tempDir) throws Exception {
+        assertParentHierarchy(tempDir, 1000);
+    }
+
+    @Test
+    void testParentHierarchy(@TempDir Path tempDir) throws Exception {
+        assertParentHierarchy(tempDir, 10);
+    }
+
+    @Test
+    void testSuppliedProjectIsNotRebuilt(@TempDir Path tempDir) throws Exception {
+        MavenSession session = createMavenSession(null);
+        MavenProject supplied = new MavenProject();
+        supplied.setGroupId("test");
+        supplied.setArtifactId("supplied");
+        supplied.setVersion("1");
+        ProjectBuildingRequest request = new DefaultProjectBuildingRequest();
+        request.setRepositorySession(session.getRepositorySession());
+        request.setProject(supplied);
+        ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
+        ProjectBuildingResult result = getContainer()
+                .lookup(org.apache.maven.project.ProjectBuilder.class)
+                .build(tempDir.resolve("missing-pom.xml").toFile(), request);
+        assertSame(supplied, result.getProject());
+        assertSame(contextClassLoader, Thread.currentThread().getContextClassLoader());
+    }
+
+    @Test
+    void testFailedParentStillInitializesChild(@TempDir Path tempDir) throws Exception {
+        Path parentPom = tempDir.resolve("pom.xml");
+        Files.writeString(parentPom, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>test</groupId>
+                  <artifactId>parent</artifactId>
+                  <version>1</version>
+                  <packaging>pom</packaging>
+                  <dependencies>
+                    <dependency>
+                      <groupId>test</groupId>
+                      <artifactId>dependency</artifactId>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        Path childPom = Files.createDirectory(tempDir.resolve("child")).resolve("pom.xml");
+        Files.writeString(childPom, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>test</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1</version>
+                  </parent>
+                  <artifactId>child</artifactId>
+                  <dependencies>
+                    <dependency>
+                      <groupId>test</groupId>
+                      <artifactId>dependency</artifactId>
+                      <version>1</version>
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+        MavenSession session = createMavenSession(null);
+        session.getRequest().setRootDirectory(tempDir);
+        ProjectBuildingRequest request = new DefaultProjectBuildingRequest();
+        request.setRepositorySession(session.getRepositorySession());
+        org.apache.maven.project.ProjectBuilder builder =
+                getContainer().lookup(org.apache.maven.project.ProjectBuilder.class);
+        ClassLoader original = Thread.currentThread().getContextClassLoader();
+        ClassLoader caller = new ClassLoader(original) {};
+        Thread.currentThread().setContextClassLoader(caller);
+        try {
+            assertThrows(ProjectBuildingException.class, () -> builder.build(parentPom.toFile(), request));
+            assertSame(caller, Thread.currentThread().getContextClassLoader());
+            MavenProject child = builder.build(childPom.toFile(), request).getProject();
+            assertSame(caller, Thread.currentThread().getContextClassLoader());
+            assertNull(child.getParent());
+            assertEquals("parent", child.getParentArtifact().getArtifactId());
+            assertEquals(parentPom.toFile(), child.getParentFile());
+            assertEquals("child", child.getArtifact().getArtifactId());
+            assertEquals("1", child.getDependencies().get(0).getVersion());
+            assertNotNull(child.getOriginalModel());
+            assertFalse(child.getCompileSourceRoots().isEmpty());
+        } finally {
+            Thread.currentThread().setContextClassLoader(original);
+        }
+    }
+
+    private void assertParentHierarchy(Path tempDir, int depth) throws Exception {
+        for (int i = 0; i < depth; i++) {
+            Path directory = Files.createDirectory(tempDir.resolve("parent-" + i));
+            String parent = i == 0 ? "" : """
+                        <parent>
+                          <groupId>org.apache.maven.its.hierarchy</groupId>
+                          <artifactId>parent-%d</artifactId>
+                          <version>1</version>
+                          <relativePath>../parent-%d/pom.xml</relativePath>
+                        </parent>
+                        """.formatted(i - 1, i - 1);
+            Files.writeString(directory.resolve("pom.xml"), """
+                    <project>
+                      <modelVersion>4.0.0</modelVersion>
+                      %s
+                      <groupId>org.apache.maven.its.hierarchy</groupId>
+                      <artifactId>parent-%d</artifactId>
+                      <version>1</version>
+                      <packaging>pom</packaging>
+                      <properties>
+                        %s
+                        <nearest>%d</nearest>
+                      </properties>
+                    </project>
+                    """.formatted(
+                            parent, i, i == 0 ? "<inherited>root</inherited>" : "", i));
+        }
+
+        MavenSession session = createMavenSession(null);
+        session.getRequest().setRootDirectory(tempDir);
+        ProjectBuildingRequest request = new DefaultProjectBuildingRequest();
+        request.setRepositorySession(session.getRepositorySession());
+        ClassLoader contextClassLoader = Thread.currentThread().getContextClassLoader();
+        MavenProject project = getContainer()
+                .lookup(org.apache.maven.project.ProjectBuilder.class)
+                .build(
+                        tempDir.resolve("parent-" + (depth - 1))
+                                .resolve("pom.xml")
+                                .toFile(),
+                        request)
+                .getProject();
+        assertSame(contextClassLoader, Thread.currentThread().getContextClassLoader());
+        for (int i = depth - 1; i >= 0; i--) {
+            assertNotNull(project, "Missing parent at depth " + i);
+            assertEquals("parent-" + i, project.getArtifactId());
+            assertEquals("root", project.getProperties().getProperty("inherited"));
+            assertEquals(Integer.toString(i), project.getProperties().getProperty("nearest"));
+            if (i > 0) {
+                assertEquals("parent-" + (i - 1), project.getParentArtifact().getArtifactId());
+                assertEquals(
+                        tempDir.resolve("parent-" + (i - 1)).resolve("pom.xml").toFile(), project.getParentFile());
+            } else {
+                assertNull(project.getParentArtifact());
+                assertNull(project.getParentFile());
+            }
+            project = project.getParent();
+        }
+        assertNull(project);
+    }
+
+    @Test
+    void testParentOutsideReactorIsBuiltOnce(@TempDir Path tempDir) throws Exception {
+        Files.writeString(tempDir.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>test</groupId>
+                  <artifactId>root</artifactId>
+                  <version>1</version>
+                  <packaging>pom</packaging>
+                  <properties>
+                    <inherited>root</inherited>
+                  </properties>
+                </project>
+                """);
+        Path parentPom = Files.createDirectory(tempDir.resolve("parent")).resolve("pom.xml");
+        Files.writeString(parentPom, """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>test</groupId>
+                    <artifactId>root</artifactId>
+                    <version>1</version>
+                  </parent>
+                  <artifactId>parent</artifactId>
+                  <packaging>pom</packaging>
+                </project>
+                """);
+        List<File> children = new ArrayList<>();
+        for (String name : List.of("a", "b")) {
+            Path childPom = Files.createDirectories(tempDir.resolve("parent").resolve(name))
+                    .resolve("pom.xml");
+            Files.writeString(childPom, """
+                    <project>
+                      <modelVersion>4.0.0</modelVersion>
+                      <parent>
+                        <groupId>test</groupId>
+                        <artifactId>parent</artifactId>
+                        <version>1</version>
+                      </parent>
+                      <artifactId>%s</artifactId>
+                    </project>
+                    """.formatted(name));
+            children.add(childPom.toFile());
+        }
+
+        MavenSession session = createMavenSession(null);
+        session.getRequest().setRootDirectory(tempDir);
+        ProjectBuildingRequest request = new DefaultProjectBuildingRequest();
+        request.setRepositorySession(session.getRepositorySession());
+        List<ProjectBuildingResult> results = getContainer()
+                .lookup(org.apache.maven.project.ProjectBuilder.class)
+                .build(children, false, request);
+
+        assertEquals(2, results.size());
+        MavenProject a = results.get(0).getProject();
+        MavenProject b = results.get(1).getProject();
+        assertEquals("root", a.getProperties().getProperty("inherited"));
+        assertNotNull(a.getParent());
+        assertEquals("parent", a.getParent().getArtifactId());
+        assertEquals("root", a.getParent().getParent().getArtifactId());
+        // both children share one parent chain instead of rebuilding it from disk (GH-13294)
+        assertSame(a.getParent(), b.getParent());
+        assertSame(a.getParent().getParent(), b.getParent().getParent());
     }
 
     @Test
@@ -643,10 +863,11 @@ class ProjectBuilderTest extends AbstractCoreMavenComponentTestCase {
         List<SourceRoot> mainResources = project.getEnabledSourceRoots(ProjectScope.MAIN, Language.RESOURCES)
                 .toList();
         assertTrue(
-                mainResources.stream().anyMatch(sr -> sr.directory()
-                        .toString()
-                        .replace(File.separatorChar, '/')
-                        .contains("src/main/custom-resources")),
+                mainResources.stream()
+                        .anyMatch(sr -> sr.directory()
+                                .toString()
+                                .replace(File.separatorChar, '/')
+                                .contains("src/main/custom-resources")),
                 "Should have custom main resources from <sources>");
 
         // Verify legacy Java directories are used as fallback
@@ -716,10 +937,11 @@ class ProjectBuilderTest extends AbstractCoreMavenComponentTestCase {
         List<SourceRoot> mainResources = project.getEnabledSourceRoots(ProjectScope.MAIN, Language.RESOURCES)
                 .toList();
         assertTrue(
-                mainResources.stream().anyMatch(sr -> sr.directory()
-                        .toString()
-                        .replace(File.separatorChar, '/')
-                        .contains("src/main/custom-resources")),
+                mainResources.stream()
+                        .anyMatch(sr -> sr.directory()
+                                .toString()
+                                .replace(File.separatorChar, '/')
+                                .contains("src/main/custom-resources")),
                 "Should have custom main resources from <sources>");
 
         // Verify NO Java source roots (legacy was rejected, none in <sources>)
@@ -890,14 +1112,16 @@ class ProjectBuilderTest extends AbstractCoreMavenComponentTestCase {
         assertEquals(2, moduleCount, "Both main sources should be for com.example.app module");
 
         // One should be implicit directory, one should be generated-sources
-        boolean hasImplicitDir = mainJavaRoots.stream().anyMatch(sr -> sr.directory()
-                .toString()
-                .replace(File.separatorChar, '/')
-                .contains("src/com.example.app/main/java"));
-        boolean hasGeneratedDir = mainJavaRoots.stream().anyMatch(sr -> sr.directory()
-                .toString()
-                .replace(File.separatorChar, '/')
-                .contains("target/generated-sources/com.example.app/java"));
+        boolean hasImplicitDir = mainJavaRoots.stream()
+                .anyMatch(sr -> sr.directory()
+                        .toString()
+                        .replace(File.separatorChar, '/')
+                        .contains("src/com.example.app/main/java"));
+        boolean hasGeneratedDir = mainJavaRoots.stream()
+                .anyMatch(sr -> sr.directory()
+                        .toString()
+                        .replace(File.separatorChar, '/')
+                        .contains("target/generated-sources/com.example.app/java"));
 
         assertTrue(hasImplicitDir, "Should have implicit source directory for module");
         assertTrue(hasGeneratedDir, "Should have generated-sources directory for module");
@@ -989,5 +1213,100 @@ class ProjectBuilderTest extends AbstractCoreMavenComponentTestCase {
                 "com.example.dup",
                 testJavaRoots.get(0).module().orElse(null),
                 "Test source root should be for com.example.dup module");
+    }
+
+    @Test
+    void testResourceTargetPathRemainsRelativeInCompatLayer() throws Exception {
+        File pom = getProject("resource-target-path");
+
+        MavenSession mavenSession = createMavenSession(null);
+        ProjectBuildingRequest configuration = new DefaultProjectBuildingRequest();
+        configuration.setRepositorySession(mavenSession.getRepositorySession());
+
+        ProjectBuildingResult result = getContainer()
+                .lookup(org.apache.maven.project.ProjectBuilder.class)
+                .build(pom, configuration);
+
+        MavenProject project = result.getProject();
+
+        // Verify main resources via SourceRoot API
+        List<SourceRoot> mainResources = project.getEnabledSourceRoots(ProjectScope.MAIN, Language.RESOURCES)
+                .toList();
+        assertEquals(1, mainResources.size());
+        assertTrue(mainResources.get(0).targetPath().isPresent(), "Main resource should have a targetPath");
+        assertFalse(
+                mainResources.get(0).targetPath().get().isAbsolute(),
+                "SourceRoot targetPath must be relative, got: "
+                        + mainResources.get(0).targetPath().get());
+        assertEquals(
+                Path.of("META-INF/tags/rdc"), mainResources.get(0).targetPath().get());
+
+        // Verify test resources via SourceRoot API
+        List<SourceRoot> testResources = project.getEnabledSourceRoots(ProjectScope.TEST, Language.RESOURCES)
+                .toList();
+        assertEquals(1, testResources.size());
+        assertTrue(testResources.get(0).targetPath().isPresent(), "Test resource should have a targetPath");
+        assertFalse(
+                testResources.get(0).targetPath().get().isAbsolute(),
+                "SourceRoot targetPath must be relative, got: "
+                        + testResources.get(0).targetPath().get());
+        assertEquals(
+                Path.of("org/apache/maven/messages"),
+                testResources.get(0).targetPath().get());
+
+        // Verify compat layer: MavenProject.getResources() must return relative targetPath
+        List<org.apache.maven.model.Resource> resources = project.getResources();
+        assertEquals(1, resources.size());
+        assertEquals(
+                "META-INF" + File.separator + "tags" + File.separator + "rdc",
+                resources.get(0).getTargetPath(),
+                "Resource targetPath from getResources() must remain relative");
+
+        // Verify compat layer: MavenProject.getTestResources() must return relative targetPath
+        List<org.apache.maven.model.Resource> testResourceList = project.getTestResources();
+        assertEquals(1, testResourceList.size());
+        assertEquals(
+                "org" + File.separator + "apache" + File.separator + "maven" + File.separator + "messages",
+                testResourceList.get(0).getTargetPath(),
+                "Test resource targetPath from getTestResources() must remain relative");
+    }
+
+    @Test
+    void testSourceTargetPathRemainsRelative() throws Exception {
+        File pom = getProject("source-target-path");
+
+        MavenSession mavenSession = createMavenSession(null);
+        ProjectBuildingRequest configuration = new DefaultProjectBuildingRequest();
+        configuration.setRepositorySession(mavenSession.getRepositorySession());
+
+        ProjectBuildingResult result = getContainer()
+                .lookup(org.apache.maven.project.ProjectBuilder.class)
+                .build(pom, configuration);
+
+        MavenProject project = result.getProject();
+
+        // Verify main resources have relative targetPath preserved
+        List<SourceRoot> mainResources = project.getEnabledSourceRoots(ProjectScope.MAIN, Language.RESOURCES)
+                .toList();
+        assertEquals(1, mainResources.size());
+        assertTrue(mainResources.get(0).targetPath().isPresent());
+        assertEquals(Path.of(".grammar"), mainResources.get(0).targetPath().get());
+
+        // Verify test resources have relative targetPath preserved
+        List<SourceRoot> testResources = project.getEnabledSourceRoots(ProjectScope.TEST, Language.RESOURCES)
+                .toList();
+        assertEquals(1, testResources.size());
+        assertTrue(testResources.get(0).targetPath().isPresent());
+        assertEquals(Path.of("META-INF/test"), testResources.get(0).targetPath().get());
+
+        // Verify the compat layer also returns relative targetPath
+        List<org.apache.maven.model.Resource> resources = project.getResources();
+        assertEquals(1, resources.size());
+        assertEquals(".grammar", resources.get(0).getTargetPath());
+
+        List<org.apache.maven.model.Resource> testResourceList = project.getTestResources();
+        assertEquals(1, testResourceList.size());
+        assertEquals(
+                "META-INF" + File.separator + "test", testResourceList.get(0).getTargetPath());
     }
 }

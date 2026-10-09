@@ -31,6 +31,10 @@ under the License.
   <name>Maven 4 API :: Toolchain</name>
   <description>Maven 4 API - Immutable Toolchain model.</description>
 
+  <properties>
+    <javaModuleName>org.apache.maven.api.toolchain</javaModuleName>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>org.apache.maven</groupId>
@@ -67,6 +71,12 @@ under the License.
             <id>modello</id>
             <goals>
               <goal>velocity</goal>
+            </goals>
+            <phase>generate-sources</phase>
+          </execution>
+          <execution>
+            <id>modello-docs</id>
+            <goals>
               <goal>xdoc</goal>
               <goal>xsd</goal>
             </goals>

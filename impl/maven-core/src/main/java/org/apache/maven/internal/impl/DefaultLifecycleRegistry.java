@@ -46,6 +46,7 @@ import org.apache.maven.api.services.LifecycleRegistry;
 import org.apache.maven.api.services.LookupException;
 import org.apache.maven.api.spi.ExtensibleEnumProvider;
 import org.apache.maven.api.spi.LifecycleProvider;
+import org.apache.maven.lifecycle.PluginVersions;
 import org.apache.maven.lifecycle.mapping.LifecyclePhase;
 import org.codehaus.plexus.PlexusContainer;
 import org.codehaus.plexus.component.repository.exception.ComponentLookupException;
@@ -88,7 +89,7 @@ public class DefaultLifecycleRegistry implements LifecycleRegistry {
     private static final String MAVEN_PLUGINS = "org.apache.maven.plugins:";
 
     public static final String DEFAULT_LIFECYCLE_MODELID = "org.apache.maven:maven-core:"
-            + DefaultLifecycleRegistry.class.getPackage().getImplementationVersion()
+            + getImplementationVersion(DefaultLifecycleRegistry.class)
             + ":default-lifecycle-bindings";
 
     public static final InputLocation DEFAULT_LIFECYCLE_INPUT_LOCATION =
@@ -120,6 +121,11 @@ public class DefaultLifecycleRegistry implements LifecycleRegistry {
                 }
             });
         }
+    }
+
+    static String getImplementationVersion(Class<?> clazz) {
+        Package packageInfo = clazz.getPackage();
+        return packageInfo != null ? packageInfo.getImplementationVersion() : null;
     }
 
     @Override
@@ -227,6 +233,64 @@ public class DefaultLifecycleRegistry implements LifecycleRegistry {
 
                 @Override
                 public Collection<Phase> phases() {
+                    List<Phase> phases = new ArrayList<>(buildOwnPhases());
+                    // Also include phases for default-phases entries that reference phases
+                    // not defined in this lifecycle (e.g., standard lifecycle phases like
+                    // process-sources). This preserves plugin bindings from components.xml
+                    // <default-phases> that map goals to standard lifecycle phases.
+                    Map<String, LifecyclePhase> lfPhases = lifecycle.getDefaultLifecyclePhases();
+                    if (lfPhases != null) {
+                        Set<String> ownPhaseNames = new HashSet<>(lifecycle.getPhases());
+                        for (Map.Entry<String, LifecyclePhase> entry : lfPhases.entrySet()) {
+                            if (!ownPhaseNames.contains(entry.getKey())) {
+                                String phaseName = entry.getKey();
+                                LifecyclePhase lfPhase = entry.getValue();
+                                phases.add(new Phase() {
+                                    @Override
+                                    public String name() {
+                                        return phaseName;
+                                    }
+
+                                    @Override
+                                    public List<Phase> phases() {
+                                        return List.of();
+                                    }
+
+                                    @Override
+                                    public Stream<Phase> allPhases() {
+                                        return Stream.of(this);
+                                    }
+
+                                    @Override
+                                    public List<Plugin> plugins() {
+                                        Map<String, Plugin> plugins = new LinkedHashMap<>();
+                                        DefaultPackagingRegistry.parseLifecyclePhaseDefinitions(
+                                                plugins, phaseName, lfPhase);
+                                        return plugins.values().stream().toList();
+                                    }
+
+                                    @Override
+                                    public Collection<Link> links() {
+                                        return List.of();
+                                    }
+                                });
+                            }
+                        }
+                    }
+                    return phases;
+                }
+
+                @Override
+                public Collection<Phase> v3phases() {
+                    return buildOwnPhases();
+                }
+
+                @Override
+                public Collection<Alias> aliases() {
+                    return Collections.emptyList();
+                }
+
+                private List<Phase> buildOwnPhases() {
                     List<String> names = lifecycle.getPhases();
                     List<Phase> phases = new ArrayList<>();
                     for (int i = 0; i < names.size(); i++) {
@@ -293,11 +357,6 @@ public class DefaultLifecycleRegistry implements LifecycleRegistry {
                     }
                     return phases;
                 }
-
-                @Override
-                public Collection<Alias> aliases() {
-                    return Collections.emptyList();
-                }
             };
         }
     }
@@ -358,7 +417,7 @@ public class DefaultLifecycleRegistry implements LifecycleRegistry {
 
     static class CleanLifecycle implements Lifecycle {
 
-        private static final String MAVEN_CLEAN_PLUGIN_VERSION = "3.4.0";
+        private static final String MAVEN_CLEAN_PLUGIN_VERSION = PluginVersions.CLEAN;
 
         @Override
         public String id() {
@@ -422,9 +481,9 @@ public class DefaultLifecycleRegistry implements LifecycleRegistry {
                                                     after(TEST_COMPILE),
                                                     after(TEST_RESOURCES),
                                                     dependencies(SCOPE_TEST, READY))),
-                                    phase(INTEGRATION_TEST)),
-                            phase(INSTALL, after(PACKAGE)),
-                            phase(DEPLOY, after(PACKAGE)))));
+                                    phase(INTEGRATION_TEST, after(BUILD))),
+                            phase(INSTALL, after(VERIFY)),
+                            phase(DEPLOY, after(VERIFY)))));
             // END SNIPPET: default
         }
 
@@ -471,7 +530,7 @@ public class DefaultLifecycleRegistry implements LifecycleRegistry {
 
     static class SiteLifecycle implements Lifecycle {
 
-        private static final String MAVEN_SITE_PLUGIN_VERSION = "3.21.0";
+        private static final String MAVEN_SITE_PLUGIN_VERSION = PluginVersions.SITE;
         private static final String MAVEN_SITE_PLUGIN =
                 MAVEN_PLUGINS + "maven-site-plugin:" + MAVEN_SITE_PLUGIN_VERSION + ":";
         private static final String PHASE_SITE = "site";

@@ -68,6 +68,16 @@ public class ComparableVersion implements Comparable<ComparableVersion> {
 
     private static final int MAX_LONGITEM_LENGTH = 18;
 
+    /**
+     * Maximum accepted length of a version string. Version strings routinely come from external
+     * repository metadata. Without a bound, every {@code -} separator nests another list whose
+     * comparison, equality, hash code, and canonicalization recurse one frame per level, and digit
+     * runs longer than {@value #MAX_LONGITEM_LENGTH} characters are parsed into {@link BigInteger}
+     * at quadratic cost. 256 characters is far beyond any real-world version identifier while
+     * keeping the nesting depth (at most about half the length) and numeric items small.
+     */
+    private static final int MAX_VERSION_LENGTH = 256;
+
     private String value;
 
     private String canonical;
@@ -385,12 +395,15 @@ public class ComparableVersion implements Comparable<ComparableVersion> {
                 case COMBINATION_ITEM:
                     int result = this.compareTo(((CombinationItem) item).getStringPart());
                     if (result == 0) {
+                        if (compareTo(null) == 0) {
+                            return -((CombinationItem) item).getDigitPart().compareTo(null);
+                        }
                         return -1;
                     }
                     return result;
 
                 case LIST_ITEM:
-                    return -1; // 1.any < 1-1
+                    return -item.compareTo(this);
 
                 default:
                     throw new IllegalStateException("invalid item: " + item.getClass());
@@ -450,7 +463,14 @@ public class ComparableVersion implements Comparable<ComparableVersion> {
         public int compareTo(Item item) {
             if (item == null) {
                 // 1-rc1 < 1, 1-ga1 > 1
-                return stringPart.compareTo(item);
+                int result = stringPart.compareTo(item);
+                if (result == 0) {
+                    // the string part is equivalent to the release qualifier ("ga", "final", "release"),
+                    // so the digit part decides: 1-ga1 > 1. Returning 0 here would break compareTo
+                    // transitivity, since 1-ga1 < 1-ga2 while both would compare equal to 1.
+                    return digitPart.compareTo(null);
+                }
+                return result;
             }
             int result = 0;
             switch (item.getType()) {
@@ -462,13 +482,16 @@ public class ComparableVersion implements Comparable<ComparableVersion> {
                 case STRING_ITEM:
                     result = stringPart.compareTo(item);
                     if (result == 0) {
+                        if (stringPart.compareTo(null) == 0) {
+                            return digitPart.compareTo(null);
+                        }
                         // X1 > X
                         return 1;
                     }
                     return result;
 
                 case LIST_ITEM:
-                    return -1;
+                    return -item.compareTo(this);
 
                 case COMBINATION_ITEM:
                     result = stringPart.compareTo(((CombinationItem) item).getStringPart());
@@ -552,6 +575,12 @@ public class ComparableVersion implements Comparable<ComparableVersion> {
                     }
                 }
             }
+
+            if (size() == 1 && get(0) instanceof ListItem list) {
+                // Removing a zero prefix must not leave an extra qualifier nesting level.
+                clear();
+                addAll(list);
+            }
         }
 
         @Override
@@ -576,9 +605,12 @@ public class ComparableVersion implements Comparable<ComparableVersion> {
                     return -1; // 1-1 < 1.0.x
 
                 case STRING_ITEM:
-                    return 1;
                 case COMBINATION_ITEM:
-                    return 1; // 1-1 > 1-sp
+                    int scalarResult = isEmpty() ? -item.compareTo(null) : get(0).compareTo(item);
+                    for (int i = 1; scalarResult == 0 && i < size(); i++) {
+                        scalarResult = get(i).compareTo(null);
+                    }
+                    return scalarResult;
 
                 case LIST_ITEM:
                     Iterator<Item> left = iterator();
@@ -640,8 +672,18 @@ public class ComparableVersion implements Comparable<ComparableVersion> {
         parseVersion(version);
     }
 
+    /**
+     * @throws IllegalArgumentException if the version string is longer than {@value #MAX_VERSION_LENGTH}
+     *         characters, to bound the parsing, comparison and canonicalization cost of arbitrarily large input
+     */
     @SuppressWarnings("checkstyle:innerassignment")
     public final void parseVersion(String version) {
+        if (version.length() > MAX_VERSION_LENGTH) {
+            throw new IllegalArgumentException("Version string is too long (" + version.length() + " > "
+                    + MAX_VERSION_LENGTH + " characters): "
+                    + version.substring(0, 32) + "...");
+        }
+
         this.value = version;
 
         items = new ListItem();
@@ -778,7 +820,7 @@ public class ComparableVersion implements Comparable<ComparableVersion> {
                 return buf.substring(i);
             }
         }
-        return buf;
+        return "0";
     }
 
     @Override
@@ -806,6 +848,59 @@ public class ComparableVersion implements Comparable<ComparableVersion> {
     @Override
     public int hashCode() {
         return items.hashCode();
+    }
+
+    /**
+     * Returns a hash code consistent with the ordering defined by {@link #compareTo(ComparableVersion)}:
+     * two versions that compare as equal get the same value even when their parsed representations
+     * differ, e.g. {@code 1-ga} ({@code [1, [ga]]}) and {@code 1} ({@code [1]}).
+     * <p>
+     * {@link #hashCode()} cannot provide this: it is structural, matching the structural
+     * {@link #equals(Object)} of this class. This method exists for classes such as
+     * {@link DefaultArtifactVersion} whose {@code equals} is defined as {@code compareTo == 0} and
+     * whose {@code hashCode} must therefore follow ordering equality (two equal objects must have
+     * equal hash codes).
+     *
+     * @return a hash code such that {@code a.compareTo(b) == 0} implies {@code a.orderingHashCode() == b.orderingHashCode()}
+     */
+    int orderingHashCode() {
+        return orderingHash(items);
+    }
+
+    private static int orderingHash(Item item) {
+        return switch (item.getType()) {
+            case Item.LIST_ITEM -> {
+                ListItem list = (ListItem) item;
+                int end = list.size();
+                // trailing items that compare as equal to null do not affect ordering: 1-ga == 1
+                while (end > 0 && list.get(end - 1).compareTo(null) == 0) {
+                    end--;
+                }
+                if (end == 1) {
+                    yield orderingHash(list.get(0));
+                }
+                int hash = 1;
+                for (int i = 0; i < end; i++) {
+                    hash = 31 * hash + orderingHash(list.get(i));
+                }
+                yield hash;
+            }
+            // qualifiers that compare as equal ("ga", "final", "release" and the empty qualifier) must hash alike
+            case Item.STRING_ITEM ->
+                StringItem.comparableQualifier(((StringItem) item).value).hashCode();
+            case Item.COMBINATION_ITEM -> {
+                CombinationItem combination = (CombinationItem) item;
+                if (combination.stringPart.compareTo(null) == 0 && combination.digitPart.isNull()) {
+                    yield orderingHash(combination.stringPart);
+                }
+                yield 31
+                                * StringItem.comparableQualifier(combination.stringPart.value)
+                                        .hashCode()
+                        + orderingHash(combination.digitPart);
+            }
+            // numeric items only compare as equal to items of the same type with the same value
+            default -> item.hashCode();
+        };
     }
 
     // CHECKSTYLE_OFF: LineLength

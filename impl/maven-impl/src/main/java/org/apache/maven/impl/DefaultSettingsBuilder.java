@@ -18,22 +18,22 @@
  */
 package org.apache.maven.impl;
 
-import javax.xml.stream.Location;
-import javax.xml.stream.XMLStreamException;
-
-import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.apache.maven.api.Constants;
 import org.apache.maven.api.ProtoSession;
+import org.apache.maven.api.annotations.Nullable;
 import org.apache.maven.api.di.Inject;
 import org.apache.maven.api.di.Named;
 import org.apache.maven.api.services.BuilderProblem;
@@ -45,15 +45,16 @@ import org.apache.maven.api.services.SettingsBuilderRequest;
 import org.apache.maven.api.services.SettingsBuilderResult;
 import org.apache.maven.api.services.Source;
 import org.apache.maven.api.services.xml.SettingsXmlFactory;
-import org.apache.maven.api.services.xml.XmlReaderException;
-import org.apache.maven.api.services.xml.XmlReaderRequest;
 import org.apache.maven.api.settings.Activation;
 import org.apache.maven.api.settings.IdentifiableBase;
 import org.apache.maven.api.settings.Profile;
+import org.apache.maven.api.settings.Proxy;
 import org.apache.maven.api.settings.Repository;
 import org.apache.maven.api.settings.RepositoryPolicy;
 import org.apache.maven.api.settings.Server;
 import org.apache.maven.api.settings.Settings;
+import org.apache.maven.api.spi.SettingsParser;
+import org.apache.maven.api.spi.SettingsParserException;
 import org.apache.maven.settings.v4.SettingsMerger;
 import org.apache.maven.settings.v4.SettingsTransformer;
 import org.codehaus.plexus.components.secdispatcher.Dispatcher;
@@ -62,7 +63,6 @@ import org.codehaus.plexus.components.secdispatcher.internal.DefaultSecDispatche
 
 /**
  * Builds the effective settings from a user settings file and/or a global settings file.
- *
  */
 @Named
 public class DefaultSettingsBuilder implements SettingsBuilder {
@@ -76,7 +76,9 @@ public class DefaultSettingsBuilder implements SettingsBuilder {
         }
     };
 
-    private final SettingsXmlFactory settingsXmlFactory;
+    private final SettingsParser xmlSettingsParser;
+
+    private final Map<String, SettingsParser> settingsParsers;
 
     private final Interpolator interpolator;
 
@@ -85,10 +87,19 @@ public class DefaultSettingsBuilder implements SettingsBuilder {
     /**
      * In Maven4 the {@link SecDispatcher} is injected and build settings are fully decrypted as well.
      */
-    @Inject
     public DefaultSettingsBuilder(
             SettingsXmlFactory settingsXmlFactory, Interpolator interpolator, Map<String, Dispatcher> dispatchers) {
-        this.settingsXmlFactory = settingsXmlFactory;
+        this(settingsXmlFactory, interpolator, dispatchers, Map.of());
+    }
+
+    @Inject
+    public DefaultSettingsBuilder(
+            SettingsXmlFactory settingsXmlFactory,
+            Interpolator interpolator,
+            Map<String, Dispatcher> dispatchers,
+            @Nullable Map<String, SettingsParser> settingsParsers) {
+        this.xmlSettingsParser = new XmlSettingsParser(settingsXmlFactory);
+        this.settingsParsers = settingsParsers != null ? settingsParsers : Map.of();
         this.interpolator = interpolator;
         this.dispatchers = dispatchers;
     }
@@ -128,11 +139,13 @@ public class DefaultSettingsBuilder implements SettingsBuilder {
                     .build();
         }
 
-        // for the special case of a drive-relative Windows path, make sure it's absolute to save plugins from trouble
+        // resolve relative local repository paths to absolute to save plugins from trouble.
+        // paths containing property placeholders like ${user.home} must be left as-is
+        // so that later interpolation can resolve them.
         String localRepository = effective.getLocalRepository();
         if (localRepository != null && !localRepository.isEmpty()) {
             Path file = Paths.get(localRepository);
-            if (!file.isAbsolute() && file.toString().startsWith(File.separator)) {
+            if (!file.isAbsolute() && !localRepository.contains("${")) {
                 effective = effective.withLocalRepository(file.toAbsolutePath().toString());
             }
         }
@@ -156,35 +169,27 @@ public class DefaultSettingsBuilder implements SettingsBuilder {
         Settings settings;
 
         try {
-            try (InputStream is = settingsSource.openStream()) {
-                settings = settingsXmlFactory.read(XmlReaderRequest.builder()
-                        .inputStream(is)
-                        .location(settingsSource.getLocation())
-                        .strict(true)
-                        .build());
-            } catch (XmlReaderException e) {
-                try (InputStream is = settingsSource.openStream()) {
-                    settings = settingsXmlFactory.read(XmlReaderRequest.builder()
-                            .inputStream(is)
-                            .location(settingsSource.getLocation())
-                            .strict(false)
-                            .build());
-                    Location loc = e.getCause() instanceof XMLStreamException xe ? xe.getLocation() : null;
-                    problems.reportProblem(new DefaultBuilderProblem(
-                            settingsSource.getLocation(),
-                            loc != null ? loc.getLineNumber() : -1,
-                            loc != null ? loc.getColumnNumber() : -1,
-                            e,
-                            e.getMessage(),
-                            BuilderProblem.Severity.WARNING));
-                }
+            SettingsParser parser = selectParser(settingsSource, problems);
+            if (parser == null) {
+                return Settings.newInstance();
             }
-        } catch (XmlReaderException e) {
-            Location loc = e.getCause() instanceof XMLStreamException xe ? xe.getLocation() : null;
+            try {
+                settings = parser.parse(settingsSource, Map.of(SettingsParser.STRICT, true));
+            } catch (SettingsParserException e) {
+                problems.reportProblem(new DefaultBuilderProblem(
+                        settingsSource.getLocation(),
+                        e.getLineNumber(),
+                        e.getColumnNumber(),
+                        e,
+                        e.getMessage(),
+                        BuilderProblem.Severity.WARNING));
+                settings = parser.parse(settingsSource, Map.of(SettingsParser.STRICT, false));
+            }
+        } catch (SettingsParserException e) {
             problems.reportProblem(new DefaultBuilderProblem(
                     settingsSource.getLocation(),
-                    loc != null ? loc.getLineNumber() : -1,
-                    loc != null ? loc.getColumnNumber() : -1,
+                    e.getLineNumber(),
+                    e.getColumnNumber(),
                     e,
                     "Non-parseable settings " + settingsSource.getLocation() + ": " + e.getMessage(),
                     BuilderProblem.Severity.FATAL));
@@ -205,7 +210,9 @@ public class DefaultSettingsBuilder implements SettingsBuilder {
 
         settingsValidator.validate(settings, isProjectSettings, problems);
 
-        if (isProjectSettings) {
+        if (!isProjectSettings) {
+            settings = settings.withServers(serversByIds(settings.getServers()));
+        } else {
             settings = Settings.newBuilder(settings, true)
                     .localRepository(null)
                     .interactiveMode(false)
@@ -220,12 +227,56 @@ public class DefaultSettingsBuilder implements SettingsBuilder {
                                     .password(null)
                                     .filePermissions(null)
                                     .directoryPermissions(null)
+                                    .aliases(List.of())
+                                    .repositoryOrigins(List.of())
                                     .build())
                             .toList())
                     .build();
         }
 
         return settings;
+    }
+
+    private List<Server> serversByIds(List<Server> servers) {
+        return servers.stream()
+                .flatMap(server -> Stream.concat(
+                        Stream.of(server), server.getAliases().stream().map(id -> serverAlias(server, id))))
+                .toList();
+    }
+
+    private Server serverAlias(Server server, String id) {
+        return Server.newBuilder(server, true).id(id).aliases(List.of()).build();
+    }
+
+    @Nullable
+    private SettingsParser selectParser(Source source, ProblemCollector<BuilderProblem> problems) {
+        List<Map.Entry<String, SettingsParser>> matches = new ArrayList<>();
+        for (Map.Entry<String, SettingsParser> entry : settingsParsers.entrySet()) {
+            try {
+                if (entry.getValue().supports(source)) {
+                    matches.add(entry);
+                }
+            } catch (RuntimeException e) {
+                String msg = "Settings parser '" + parserName(entry.getKey())
+                        + "' failed to determine support for this source";
+                problems.reportProblem(
+                        new DefaultBuilderProblem(source.getLocation(), -1, -1, e, msg, BuilderProblem.Severity.FATAL));
+                return null;
+            }
+        }
+        if (matches.size() > 1) {
+            String parsers =
+                    matches.stream().map(e -> parserName(e.getKey())).sorted().collect(Collectors.joining(", "));
+            String msg = "Multiple settings parsers support this source: " + parsers;
+            problems.reportProblem(
+                    new DefaultBuilderProblem(source.getLocation(), -1, -1, null, msg, BuilderProblem.Severity.FATAL));
+            return null;
+        }
+        return matches.isEmpty() ? xmlSettingsParser : matches.get(0).getValue();
+    }
+
+    private static String parserName(@Nullable String key) {
+        return key != null ? key : "<unnamed>";
     }
 
     private Settings interpolate(
@@ -265,43 +316,8 @@ public class DefaultSettingsBuilder implements SettingsBuilder {
         }
         SecDispatcher secDispatcher = new DefaultSecDispatcher(dispatchers, getSecuritySettings(request.getSession()));
         final AtomicInteger preMaven4Passwords = new AtomicInteger(0);
-        UnaryOperator<String> decryptFunction = str -> {
-            if (str != null && !str.isEmpty() && !str.contains("${") && secDispatcher.isAnyEncryptedString(str)) {
-                if (secDispatcher.isLegacyEncryptedString(str)) {
-                    // the call above return true for too broad types of strings, original idea with 2.x sec-dispatcher
-                    // was to make it possible to add "descriptions" to encrypted passwords. Maven 4 is
-                    // limiting itself to decryption of ONLY the simplest cases of legacy passwords, those having form
-                    // as documented on page: https://maven.apache.org/guides/mini/guide-encryption.html
-                    // Examples of decrypted legacy passwords:
-                    // <password>{COQLCE6DU6GtcS5P=}</password>
-                    // <password>Oleg reset this password on 2009-03-11 {COQLCE6DU6GtcS5P=}</password>
-
-                    // In short, secDispatcher#isLegacyEncryptedString(str) did return true, but we apply more scrutiny
-                    // and check does string start with "{" or contains " {" (whitespace before opening curly braces),
-                    // and that it ends with "}" strictly. Otherwise, we refuse it.
-                    if ((!str.startsWith("{") && !str.contains(" {")) || !str.endsWith("}")) {
-                        // this is not a legacy password we care for
-                        return str;
-                    }
-
-                    // add a problem
-                    preMaven4Passwords.incrementAndGet();
-                }
-                try {
-                    return secDispatcher.decrypt(str);
-                } catch (Exception e) {
-                    problems.reportProblem(new DefaultBuilderProblem(
-                            settingsSource.getLocation(),
-                            -1,
-                            -1,
-                            e,
-                            "Could not decrypt password (fix the corrupted password or remove it, if unused) " + str,
-                            BuilderProblem.Severity.FATAL));
-                }
-            }
-            return str;
-        };
-        Settings result = new SettingsTransformer(decryptFunction).visit(settings);
+        Settings result = new DecryptingSettingsTransformer(settingsSource, secDispatcher, preMaven4Passwords, problems)
+                .visit(settings);
         if (preMaven4Passwords.get() > 0) {
             problems.reportProblem(new DefaultBuilderProblem(
                     settingsSource.getLocation(),
@@ -313,6 +329,124 @@ public class DefaultSettingsBuilder implements SettingsBuilder {
                     BuilderProblem.Severity.WARNING));
         }
         return result;
+    }
+
+    /**
+     * Decrypts every encrypted-looking string value found in the settings, reporting a problem
+     * for any value that cannot be decrypted. Unlike a plain string transform, this keeps track
+     * of which server, proxy or profile property is currently being decrypted so a failure can be
+     * reported by that reference rather than by echoing the encrypted value itself.
+     */
+    private static class DecryptingSettingsTransformer extends SettingsTransformer {
+        private final Source settingsSource;
+        private final SecDispatcher secDispatcher;
+        private final AtomicInteger preMaven4Passwords;
+        private final ProblemCollector<BuilderProblem> problems;
+        private String currentReference;
+
+        DecryptingSettingsTransformer(
+                Source settingsSource,
+                SecDispatcher secDispatcher,
+                AtomicInteger preMaven4Passwords,
+                ProblemCollector<BuilderProblem> problems) {
+            super(UnaryOperator.identity());
+            this.settingsSource = settingsSource;
+            this.secDispatcher = secDispatcher;
+            this.preMaven4Passwords = preMaven4Passwords;
+            this.problems = problems;
+        }
+
+        @Override
+        protected String transform(String str) {
+            if (str == null || str.isEmpty() || str.contains("${") || !secDispatcher.isAnyEncryptedString(str)) {
+                return str;
+            }
+            if (secDispatcher.isLegacyEncryptedString(str)) {
+                // the call above return true for too broad types of strings, original idea with 2.x sec-dispatcher
+                // was to make it possible to add "descriptions" to encrypted passwords. Maven 4 is
+                // limiting itself to decryption of ONLY the simplest cases of legacy passwords, those having form
+                // as documented on page: https://maven.apache.org/guides/mini/guide-encryption.html
+                // Examples of decrypted legacy passwords:
+                // <password>{COQLCE6DU6GtcS5P=}</password>
+                // <password>Oleg reset this password on 2009-03-11 {COQLCE6DU6GtcS5P=}</password>
+
+                // In short, secDispatcher#isLegacyEncryptedString(str) did return true, but we apply more scrutiny
+                // and check does string start with "{" or contains " {" (whitespace before opening curly braces),
+                // and that it ends with "}" strictly. Otherwise, we refuse it.
+                if ((!str.startsWith("{") && !str.contains(" {")) || !str.endsWith("}")) {
+                    // this is not a legacy password we care for
+                    return str;
+                }
+
+                // add a problem
+                preMaven4Passwords.incrementAndGet();
+            }
+            try {
+                return secDispatcher.decrypt(str);
+            } catch (Exception e) {
+                problems.reportProblem(new DefaultBuilderProblem(
+                        settingsSource.getLocation(),
+                        -1,
+                        -1,
+                        e,
+                        "Could not decrypt password (fix the corrupted password or remove it, if unused)"
+                                + (currentReference != null ? " for " + currentReference : ""),
+                        BuilderProblem.Severity.FATAL));
+                return str;
+            }
+        }
+
+        @Override
+        protected Server.Builder transformServer_Password(
+                Supplier<? extends Server.Builder> creator, Server.Builder builder, Server target) {
+            return withReference(
+                    "server " + target.getId(), () -> super.transformServer_Password(creator, builder, target));
+        }
+
+        @Override
+        protected Server.Builder transformServer_Passphrase(
+                Supplier<? extends Server.Builder> creator, Server.Builder builder, Server target) {
+            return withReference(
+                    "server " + target.getId(), () -> super.transformServer_Passphrase(creator, builder, target));
+        }
+
+        @Override
+        protected Proxy.Builder transformProxy_Password(
+                Supplier<? extends Proxy.Builder> creator, Proxy.Builder builder, Proxy target) {
+            return withReference(
+                    "proxy " + target.getId(), () -> super.transformProxy_Password(creator, builder, target));
+        }
+
+        @Override
+        protected Profile.Builder transformProfile_Properties(
+                Supplier<? extends Profile.Builder> creator, Profile.Builder builder, Profile target) {
+            Map<String, String> props = target.getProperties();
+            Map<String, String> newProps = null;
+            for (Map.Entry<String, String> entry : props.entrySet()) {
+                String newVal = withReference(
+                        "property " + entry.getKey() + " in profile " + target.getId(),
+                        () -> transform(entry.getValue()));
+                if (newVal != null && newVal != entry.getValue()) {
+                    if (newProps == null) {
+                        newProps = new HashMap<>(props);
+                        builder = builder != null ? builder : creator.get();
+                        builder.properties(newProps);
+                    }
+                    newProps.put(entry.getKey(), newVal);
+                }
+            }
+            return builder;
+        }
+
+        private <T> T withReference(String reference, Supplier<T> action) {
+            String previous = currentReference;
+            currentReference = reference;
+            try {
+                return action.get();
+            } finally {
+                currentReference = previous;
+            }
+        }
     }
 
     private Path getSecuritySettings(ProtoSession session) {
@@ -348,7 +482,6 @@ public class DefaultSettingsBuilder implements SettingsBuilder {
 
     /**
      * Collects the output of the settings builder.
-     *
      */
     static class DefaultSettingsBuilderResult implements SettingsBuilderResult {
 

@@ -18,7 +18,6 @@
  */
 package org.apache.maven.impl.model;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
@@ -39,7 +38,6 @@ import org.apache.maven.api.services.Interpolator;
 import org.apache.maven.api.services.InterpolatorException;
 import org.apache.maven.api.services.ModelBuilderException;
 import org.apache.maven.api.services.ProjectBuilderException;
-import org.apache.maven.api.services.model.PathTranslator;
 import org.apache.maven.api.services.model.ProfileActivationContext;
 import org.apache.maven.api.services.model.RootLocator;
 
@@ -160,7 +158,6 @@ public class DefaultProfileActivationContext implements ProfileActivationContext
         }
     }
 
-    private final PathTranslator pathTranslator;
     private final RootLocator rootLocator;
     private final Interpolator interpolator;
 
@@ -171,9 +168,7 @@ public class DefaultProfileActivationContext implements ProfileActivationContext
     private Model model;
     final Record record;
 
-    public DefaultProfileActivationContext(
-            PathTranslator pathTranslator, RootLocator rootLocator, Interpolator interpolator) {
-        this.pathTranslator = pathTranslator;
+    public DefaultProfileActivationContext(RootLocator rootLocator, Interpolator interpolator) {
         this.rootLocator = rootLocator;
         this.interpolator = interpolator;
         this.record = null;
@@ -181,7 +176,6 @@ public class DefaultProfileActivationContext implements ProfileActivationContext
 
     @SuppressWarnings("checkstyle:ParameterNumber")
     public DefaultProfileActivationContext(
-            PathTranslator pathTranslator,
             RootLocator rootLocator,
             Interpolator interpolator,
             List<String> activeProfileIds,
@@ -190,7 +184,6 @@ public class DefaultProfileActivationContext implements ProfileActivationContext
             Map<String, String> userProperties,
             Model model) {
         this(
-                pathTranslator,
                 rootLocator,
                 interpolator,
                 activeProfileIds,
@@ -203,7 +196,6 @@ public class DefaultProfileActivationContext implements ProfileActivationContext
 
     @SuppressWarnings("checkstyle:ParameterNumber")
     private DefaultProfileActivationContext(
-            PathTranslator pathTranslator,
             RootLocator rootLocator,
             Interpolator interpolator,
             List<String> activeProfileIds,
@@ -212,7 +204,6 @@ public class DefaultProfileActivationContext implements ProfileActivationContext
             Map<String, String> userProperties,
             Model model,
             Record record) {
-        this.pathTranslator = pathTranslator;
         this.rootLocator = rootLocator;
         this.interpolator = interpolator;
         this.activeProfileIds = activeProfileIds;
@@ -225,7 +216,6 @@ public class DefaultProfileActivationContext implements ProfileActivationContext
 
     DefaultProfileActivationContext start() {
         return new DefaultProfileActivationContext(
-                pathTranslator,
                 rootLocator,
                 interpolator,
                 activeProfileIds,
@@ -237,10 +227,7 @@ public class DefaultProfileActivationContext implements ProfileActivationContext
     }
 
     Record stop() {
-        // only keep keys for which the value is `true`
         Objects.requireNonNull(record, "start() must be called before stop()");
-        record.usedActiveProfiles.values().removeIf(value -> !value);
-        record.usedInactiveProfiles.values().removeIf(value -> !value);
         return new Record(record); // Return immutable copy for thread-safe caching
     }
 
@@ -367,12 +354,114 @@ public class DefaultProfileActivationContext implements ProfileActivationContext
         return this;
     }
 
+    /**
+     * Returns a sandboxed copy of this context suitable for evaluating profiles in
+     * repository-resolved (external) models — dependency POMs, parent POMs, and imported BOMs.
+     * <p>
+     * The sandboxed context:
+     * <ul>
+     *   <li><b>Merges model properties into system property lookups</b>: system properties
+     *       ({@code java.version}, {@code os.name}, …) are checked first (preserving JDK/OS
+     *       activation), then model properties (the POM's own {@code <properties>}) are used
+     *       as a fallback. This makes POM-declared properties visible to the
+     *       {@code PropertyProfileActivator} without modifying the activator's lookup chain
+     *       for non-external models.</li>
+     *   <li><b>Suppresses user properties</b> (consumer {@code -D} flags): they were not
+     *       set for the dependency and must not accidentally activate its profiles.</li>
+     *   <li><b>Disables file existence checks</b>: the publisher's file system paths do not
+     *       exist in the consumer's environment.  File-activated profiles should be
+     *       pre-filtered by the caller before reaching this context (the sandbox's
+     *       {@code exists()} returns {@code false} as a safety net, but that alone would
+     *       incorrectly activate {@code <missing>} profiles).</li>
+     * </ul>
+     *
+     * @return a sandboxed {@link ProfileActivationContext} for external model evaluation
+     */
+    public ProfileActivationContext withoutUserPropertiesAndFilesystem() {
+        return new ProfileActivationContext() {
+            @Override
+            public boolean isProfileActive(String profileId) {
+                return DefaultProfileActivationContext.this.isProfileActive(profileId);
+            }
+
+            @Override
+            public boolean isProfileInactive(String profileId) {
+                return DefaultProfileActivationContext.this.isProfileInactive(profileId);
+            }
+
+            /**
+             * System property lookup with model property fallback.
+             * System properties take precedence; model properties fill in as a fallback
+             * so POM-declared values drive property-activated profiles in external models.
+             */
+            @Override
+            public String getSystemProperty(String key) {
+                String value = DefaultProfileActivationContext.this.getSystemProperty(key);
+                if (value == null) {
+                    value = DefaultProfileActivationContext.this.getModelProperty(key);
+                }
+                return value;
+            }
+
+            /** User properties are suppressed: consumer {@code -D} flags do not activate dependency profiles. */
+            @Override
+            public String getUserProperty(String key) {
+                return null;
+            }
+
+            @Override
+            public String getModelProperty(String key) {
+                return DefaultProfileActivationContext.this.getModelProperty(key);
+            }
+
+            @Override
+            public String getModelArtifactId() {
+                return DefaultProfileActivationContext.this.getModelArtifactId();
+            }
+
+            @Override
+            public String getModelPackaging() {
+                return DefaultProfileActivationContext.this.getModelPackaging();
+            }
+
+            @Override
+            public String getModelRootDirectory() {
+                return DefaultProfileActivationContext.this.getModelRootDirectory();
+            }
+
+            @Override
+            public String getModelBaseDirectory() {
+                return DefaultProfileActivationContext.this.getModelBaseDirectory();
+            }
+
+            @Override
+            public String interpolatePath(String path) throws InterpolatorException {
+                return DefaultProfileActivationContext.this.interpolatePath(path);
+            }
+
+            /**
+             * File existence checks are disabled for external models: publisher paths do not
+             * exist in the consumer's environment.  File-activated profiles are pre-filtered
+             * before reaching this context (see {@code getActiveProfiles}), so this method
+             * should not normally be called; it returns {@code false} as a safety net.
+             */
+            @Override
+            public boolean exists(String path, boolean glob) {
+                return false;
+            }
+        };
+    }
+
     @Override
     public String interpolatePath(String path) throws InterpolatorException {
+        return DefaultPathTranslator.alignToBaseDirectory(interpolate(path), model.getProjectDirectory());
+    }
+
+    private String interpolate(String path) throws InterpolatorException {
         if (path == null) {
             return null;
         }
-        String absolutePath = interpolator.interpolate(path, s -> {
+        return interpolator.interpolate(path, s -> {
             if ("basedir".equals(s) || "project.basedir".equals(s)) {
                 return getModelBaseDirectory();
             }
@@ -388,7 +477,6 @@ public class DefaultProfileActivationContext implements ProfileActivationContext
             }
             return r;
         });
-        return pathTranslator.alignToBaseDirectory(absolutePath, model.getProjectDirectory());
     }
 
     @Override
@@ -402,9 +490,10 @@ public class DefaultProfileActivationContext implements ProfileActivationContext
     }
 
     private boolean doExists(String path, boolean enableGlob) throws ModelBuilderException {
-        String pattern = interpolatePath(path);
         String fixed, glob;
         if (enableGlob) {
+            // split before aligning to the base directory: '*' and '?' are not valid in a Windows path
+            String pattern = interpolate(path);
             int asteriskIndex = pattern.indexOf('*');
             int questionMarkIndex = pattern.indexOf('?');
             int firstWildcardIndex = questionMarkIndex < 0
@@ -414,17 +503,15 @@ public class DefaultProfileActivationContext implements ProfileActivationContext
                 fixed = pattern;
                 glob = "";
             } else {
-                int lastSep = pattern.substring(0, firstWildcardIndex).lastIndexOf(File.separatorChar);
-                if (lastSep < 0) {
-                    fixed = "";
-                    glob = pattern;
-                } else {
-                    fixed = pattern.substring(0, lastSep);
-                    glob = pattern.substring(lastSep + 1);
-                }
+                String prefix = pattern.substring(0, firstWildcardIndex);
+                int lastSep = Math.max(prefix.lastIndexOf('/'), prefix.lastIndexOf('\\'));
+                fixed = pattern.substring(0, lastSep + 1);
+                // '\' is an escape character in the glob syntax, on Windows too, where '/' matches the separator
+                glob = pattern.substring(lastSep + 1).replace('\\', '/');
             }
+            fixed = DefaultPathTranslator.alignToBaseDirectory(fixed, model.getProjectDirectory());
         } else {
-            fixed = pattern;
+            fixed = interpolatePath(path);
             glob = "";
         }
         Path fixedPath = Paths.get(fixed);

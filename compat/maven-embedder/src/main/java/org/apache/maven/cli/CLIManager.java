@@ -152,6 +152,7 @@ public class CLIManager {
                 .desc("Force the use of an alternate POM file (or directory with pom.xml)")
                 .build());
         options.addOption(Option.builder(Character.toString(SET_USER_PROPERTY))
+                .longOpt("define")
                 .numberOfArgs(2)
                 .valueSeparator('=')
                 .desc("Define a user property")
@@ -193,7 +194,7 @@ public class CLIManager {
                 .build());
         options.addOption(Option.builder(Character.toString(BATCH_MODE))
                 .longOpt("batch-mode")
-                .desc("Run in non-interactive mode. Alias for --non-interactive (kept for backwards compatability)")
+                .desc("Run in non-interactive mode. Alias for --non-interactive (kept for backwards compatibility)")
                 .build());
         options.addOption(Option.builder()
                 .longOpt(NON_INTERACTIVE)
@@ -306,7 +307,8 @@ public class CLIManager {
         options.addOption(Option.builder(THREADS)
                 .longOpt("threads")
                 .hasArg()
-                .desc("Thread count, for instance 4 (int) or 2C/2.5C (int/float) where C is core multiplied")
+                .desc(
+                        "Thread count, for instance 4 (int) or 2C/2.5C (int/float) where C is core multiplied, or 'max' (available processors minus 1, minimum 1)")
                 .build());
         options.addOption(Option.builder(BUILDER)
                 .longOpt("builder")

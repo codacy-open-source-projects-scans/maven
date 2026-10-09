@@ -21,8 +21,10 @@ package org.apache.maven.impl.model;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.stream.Stream;
 
 import org.apache.maven.api.Session;
+import org.apache.maven.api.services.BuilderProblem;
 import org.apache.maven.api.services.ModelBuilder;
 import org.apache.maven.api.services.ModelBuilderException;
 import org.apache.maven.api.services.ModelBuilderRequest;
@@ -34,6 +36,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
@@ -187,6 +190,69 @@ class ParentCycleDetectionTest {
         }
     }
 
+    /**
+     * Reproduces GH-12074: dependency-reduced-pom.xml from shade plugin causes false parent cycle.
+     *
+     * When a POM's parent relative path resolves to a POM with a different GA (e.g., the
+     * default ".." from dependency-reduced-pom.xml resolves to a sibling project POM), the model
+     * builder should detect the GA mismatch early and skip local resolution — not recursively
+     * read the candidate's parents and trigger a false cycle.
+     */
+    @Test
+    void testNoFalseCycleWhenRelativePathResolvesToWrongPom(@TempDir Path tempDir) throws IOException {
+        Files.createDirectories(tempDir.resolve(".mvn"));
+
+        // Root POM found by resolving ".." from the project directory.
+        // It has a different GA than the expected parent but shares the same parent reference.
+        Path rootPom = tempDir.resolve("pom.xml");
+        Files.writeString(rootPom, """
+            <project xmlns="http://maven.apache.org/POM/4.0.0">
+                <modelVersion>4.0.0</modelVersion>
+                <parent>
+                    <groupId>test</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0</version>
+                    <relativePath/>
+                </parent>
+                <artifactId>root</artifactId>
+            </project>
+            """);
+
+        // Project POM in a subdirectory, referencing the same parent.
+        // Default relativePath ".." resolves to rootPom above, which has GA test:root (not test:parent).
+        Path projectPom = tempDir.resolve("project").resolve("pom.xml");
+        Files.createDirectories(projectPom.getParent());
+        Files.writeString(projectPom, """
+            <project xmlns="http://maven.apache.org/POM/4.0.0">
+                <modelVersion>4.0.0</modelVersion>
+                <parent>
+                    <groupId>test</groupId>
+                    <artifactId>parent</artifactId>
+                    <version>1.0</version>
+                </parent>
+                <artifactId>project</artifactId>
+            </project>
+            """);
+
+        // Use BUILD_EFFECTIVE to match what the shade plugin triggers via compat ProjectBuilder
+        ModelBuilderRequest request = ModelBuilderRequest.builder()
+                .session(session)
+                .source(Sources.buildSource(projectPom))
+                .requestType(ModelBuilderRequest.RequestType.BUILD_EFFECTIVE)
+                .build();
+
+        try {
+            modelBuilder.newSession().build(request);
+        } catch (StackOverflowError error) {
+            fail("StackOverflowError — cycle detection not working");
+        } catch (ModelBuilderException exception) {
+            // Parent not found externally is expected; a cycle error is not
+            if (exception.getMessage().contains("cycle")) {
+                fail("False parent cycle detected: " + exception.getMessage());
+            }
+        }
+    }
+
     @Test
     void testMultipleModulesWithSameParentDoNotCauseCycle(@TempDir Path tempDir) throws IOException {
         // Create .mvn directory to mark root
@@ -258,5 +324,82 @@ class ParentCycleDetectionTest {
         // Verify that both models were built successfully
         assertNotNull(resultA);
         assertNotNull(resultB);
+    }
+
+    /**
+     * Reproduces GH-13191: maven-shade-plugin generates dependency-reduced-pom.xml with
+     * {@code <relativePath>pom.xml</relativePath>} copied from the original POM. When Maven 4
+     * processes this generated POM, the relativePath resolves to the project's own pom.xml (wrong GA).
+     * This must produce a FATAL with a message pointing users to upgrade the tool or use
+     * {@code -Dmaven.maven3Personality} as a workaround.
+     */
+    @Test
+    void testWrongRelativePathInGeneratedPomIsFatalWithMaven3Hint(@TempDir Path tempDir) throws IOException {
+        Files.createDirectories(tempDir.resolve(".mvn"));
+
+        // Simulates the original project pom.xml (the child artifact itself)
+        Path projectPom = tempDir.resolve("pom.xml");
+        Files.writeString(projectPom, """
+            <project xmlns="http://maven.apache.org/POM/4.0.0">
+                <modelVersion>4.0.0</modelVersion>
+                <parent>
+                    <groupId>org.apache.sling</groupId>
+                    <artifactId>sling-bundle-parent</artifactId>
+                    <version>57</version>
+                    <relativePath/>
+                </parent>
+                <groupId>org.apache.sling</groupId>
+                <artifactId>org.apache.sling.models.impl</artifactId>
+                <version>2.0.3-SNAPSHOT</version>
+                <packaging>jar</packaging>
+            </project>
+            """);
+
+        // Simulates dependency-reduced-pom.xml generated by maven-shade-plugin.
+        // It contains <relativePath>pom.xml</relativePath> which resolves to the project's own
+        // pom.xml — a different GA than the declared parent.
+        Path reducedPom = tempDir.resolve("dependency-reduced-pom.xml");
+        Files.writeString(reducedPom, """
+            <project xmlns="http://maven.apache.org/POM/4.0.0">
+                <modelVersion>4.0.0</modelVersion>
+                <parent>
+                    <groupId>org.apache.sling</groupId>
+                    <artifactId>sling-bundle-parent</artifactId>
+                    <version>57</version>
+                    <relativePath>pom.xml</relativePath>
+                </parent>
+                <groupId>org.apache.sling</groupId>
+                <artifactId>org.apache.sling.models.impl</artifactId>
+                <version>2.0.3-SNAPSHOT</version>
+                <packaging>jar</packaging>
+            </project>
+            """);
+
+        ModelBuilderRequest request = ModelBuilderRequest.builder()
+                .session(session)
+                .source(Sources.buildSource(reducedPom))
+                .requestType(ModelBuilderRequest.RequestType.BUILD_PROJECT)
+                .build();
+
+        ModelBuilderResult result;
+        try {
+            result = modelBuilder.newSession().build(request);
+            // If somehow no exception, still check problems below
+        } catch (ModelBuilderException e) {
+            result = e.getResult();
+        }
+
+        assertNotNull(result);
+
+        // Must produce a FATAL about the wrong relativePath — not silently demoted to WARNING
+        boolean hasFatalWithHint = Stream.concat(Stream.of(result), result.getChildren().stream())
+                .flatMap(r -> r.getProblemCollector().problems())
+                .anyMatch(p -> p.getSeverity() == BuilderProblem.Severity.FATAL
+                        && p.getMessage().contains("relativePath")
+                        && p.getMessage().contains("pom.xml")
+                        && p.getMessage().contains("maven.maven3Personality"));
+        assertTrue(
+                hasFatalWithHint,
+                "Expected a FATAL about the wrong relativePath with a -Dmaven.maven3Personality hint");
     }
 }

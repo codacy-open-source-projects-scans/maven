@@ -181,6 +181,54 @@ class DefaultArtifactVersionTest {
     }
 
     @Test
+    void testHashCodeConsistentWithEquals() {
+        // equals is defined as compareTo == 0, so every compareTo-equal spelling
+        // must produce the same hash code (Object contract)
+        assertEqualsAndHash("1", "1-ga");
+        assertEqualsAndHash("1", "1-final");
+        assertEqualsAndHash("1", "1-release");
+        assertEqualsAndHash("1", "1.0-ga");
+        assertEqualsAndHash("1", "1-0");
+        assertEqualsAndHash("1", "1.0.0");
+        assertEqualsAndHash("1-SNAPSHOT", "1.0-SNAPSHOT");
+    }
+
+    @Test
+    void testZeroPrefixedQualifierEqualsAndHashCode() {
+        for (String prefix : new String[] {"", "1-", "1.2-"}) {
+            for (String qualifier : new String[] {"alpha", "a1", "rc", "snapshot", "ga", "ga0", "ga1", "sp", "x"}) {
+                for (String zero : new String[] {"0-", "0.", "0-0-", "0-0.0-"}) {
+                    assertEqualsAndHash(prefix + qualifier, prefix + zero + qualifier);
+                }
+            }
+            assertEqualsAndHash(prefix + "ga", prefix + "0-final");
+            assertEqualsAndHash(prefix + "ga1", prefix + "0-0-release1");
+        }
+    }
+
+    @Test
+    void testReleaseQualifierWithZeroDigitEqualsAndHashCode() {
+        for (String release : new String[] {"ga", "final", "release"}) {
+            for (int length : new int[] {1, 9, 10, 18, 19}) {
+                String version = "1-" + release + "0".repeat(length);
+                assertEqualsAndHash("1", version);
+                assertEqualsAndHash("1-ga", version);
+                assertEqualsAndHash("1-ga.1", version + ".1");
+                assertEqualsAndHash("1-ga-alpha", version + "-alpha");
+            }
+        }
+    }
+
+    @Test
+    void testNestedQualifierListEqualsAndHashCode() {
+        assertEqualsAndHash("b.m", "b.m.final");
+        assertEqualsAndHash("b.y", "b.y.0");
+        assertEqualsAndHash("beta.milestone", "0000000000-beta.milestone-");
+        assertEqualsAndHash("beta.beta-release.0000000000000000000", "0000000000000000000.00.beta.beta");
+        assertEqualsAndHash("9.a--release0", "9a.release");
+    }
+
+    @Test
     void testEqualsNullSafe() {
         assertFalse(newArtifactVersion("1").equals(null));
     }
@@ -188,6 +236,13 @@ class DefaultArtifactVersionTest {
     @Test
     void testEqualsTypeSafe() {
         assertFalse(newArtifactVersion("1").equals("non-an-artifact-version-instance"));
+    }
+
+    private void assertEqualsAndHash(String left, String right) {
+        ArtifactVersion v1 = newArtifactVersion(left);
+        ArtifactVersion v2 = newArtifactVersion(right);
+        assertTrue(v1.equals(v2), left + " and " + right + " should be equal");
+        assertEquals(v1.hashCode(), v2.hashCode(), left + " and " + right + " should have the same hash code");
     }
 
     private void assertVersionOlder(String left, String right) {

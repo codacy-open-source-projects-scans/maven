@@ -20,6 +20,7 @@ package org.apache.maven.cli.event;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -199,14 +200,53 @@ public class ExecutionEventLogger extends AbstractExecutionListener {
 
         List<MavenProject> projects = session.getProjects();
 
+        String skippedMessage = builder().warning("SKIPPED").build();
+        String successMessage = builder().success("SUCCESS").build();
+        String failureMessage = builder().failure("FAILURE").build();
+        String unknownMessage = builder().warning("UNKNOWN").build();
+
+        List<ReactorSummaryEntry> entries = new ArrayList<>(projects.size());
+        for (MavenProject project : projects) {
+            BuildSummary buildSummary = result.getBuildSummary(project);
+
+            String statusMessage;
+            int group;
+            if (buildSummary instanceof BuildSuccess) {
+                statusMessage = successMessage;
+                group = 1;
+            } else if (buildSummary instanceof BuildFailure) {
+                statusMessage = failureMessage;
+                group = 2;
+            } else if (buildSummary == null) {
+                statusMessage = skippedMessage;
+                group = 0;
+            } else {
+                statusMessage = unknownMessage;
+                group = 2;
+            }
+            entries.add(new ReactorSummaryEntry(project, buildSummary, group, statusMessage));
+        }
+
+        ReactorSummaryRequest request = new ReactorSummaryRequest(entries, isSingleVersion);
+
+        logReactorSummaryGroup(request, 0);
+        logReactorSummaryGroup(request, 1);
+        logReactorSummaryGroup(request, 2);
+    }
+
+    private void logReactorSummaryGroup(ReactorSummaryRequest request, int group) {
         StringBuilder buffer = new StringBuilder(128);
 
-        for (MavenProject project : projects) {
-            buffer.append(project.getName());
+        for (ReactorSummaryEntry entry : request.entries()) {
+            if (entry.group() != group) {
+                continue;
+            }
+
+            buffer.append(entry.project().getName());
             buffer.append(' ');
 
-            if (!isSingleVersion) {
-                buffer.append(project.getVersion());
+            if (!request.isSingleVersion()) {
+                buffer.append(entry.project().getVersion());
                 buffer.append(' ');
             }
 
@@ -217,47 +257,51 @@ public class ExecutionEventLogger extends AbstractExecutionListener {
                 buffer.append(' ');
             }
 
-            BuildSummary buildSummary = result.getBuildSummary(project);
-
-            if (buildSummary == null) {
-                buffer.append(builder().warning("SKIPPED"));
-            } else if (buildSummary instanceof BuildSuccess) {
-                buffer.append(builder().success("SUCCESS"));
-                buffer.append(" [");
-                String buildTimeDuration = formatDuration(buildSummary.getTime());
-                int padSize = MAX_PADDED_BUILD_TIME_DURATION_LENGTH - buildTimeDuration.length();
-                if (padSize > 0) {
-                    buffer.append(chars(' ', padSize));
-                }
-                buffer.append(buildTimeDuration);
-                buffer.append(']');
-            } else if (buildSummary instanceof BuildFailure) {
-                buffer.append(builder().failure("FAILURE"));
-                buffer.append(" [");
-                String buildTimeDuration = formatDuration(buildSummary.getTime());
-                int padSize = MAX_PADDED_BUILD_TIME_DURATION_LENGTH - buildTimeDuration.length();
-                if (padSize > 0) {
-                    buffer.append(chars(' ', padSize));
-                }
-                buffer.append(buildTimeDuration);
-                buffer.append(']');
+            buffer.append(entry.statusMessage());
+            if (entry.buildSummary() != null) {
+                formatBuildTime(buffer, entry.buildSummary());
             }
 
-            logger.info(buffer.toString());
+            if (entry.buildSummary() instanceof BuildFailure) {
+                logger.error(buffer.toString());
+            } else {
+                logger.info(buffer.toString());
+            }
             buffer.setLength(0);
         }
+    }
+
+    private record ReactorSummaryRequest(List<ReactorSummaryEntry> entries, boolean isSingleVersion) {}
+
+    private record ReactorSummaryEntry(
+            MavenProject project, BuildSummary buildSummary, int group, String statusMessage) {}
+
+    private void formatBuildTime(StringBuilder buffer, BuildSummary buildSummary) {
+        buffer.append(" [");
+        String buildTimeDuration = formatDuration(buildSummary.getTime());
+        int padSize = MAX_PADDED_BUILD_TIME_DURATION_LENGTH - buildTimeDuration.length();
+        if (padSize > 0) {
+            buffer.append(chars(' ', padSize));
+        }
+        buffer.append(buildTimeDuration);
+        buffer.append(']');
     }
 
     private void logResult(MavenSession session) {
         infoLine('-');
         MessageBuilder buffer = builder();
 
-        if (session.getResult().hasExceptions()) {
+        boolean failure = session.getResult().hasExceptions();
+        if (failure) {
             buffer.failure("BUILD FAILURE");
         } else {
             buffer.success("BUILD SUCCESS");
         }
-        logger.info(buffer.toString());
+        if (failure) {
+            logger.error(buffer.toString());
+        } else {
+            logger.info(buffer.toString());
+        }
     }
 
     private MessageBuilder builder() {

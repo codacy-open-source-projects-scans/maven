@@ -290,6 +290,11 @@ public class DefaultModelBuilder implements ModelBuilder {
         Collection<String> parentIds = new LinkedHashSet<>();
         List<ModelData> lineage = new ArrayList<>();
 
+        // Models built for dependency resolution (a dependency POM, one of its parents, or an
+        // imported BOM) are read at ModelBuildingRequest.VALIDATION_LEVEL_MINIMAL rather than
+        // the default STRICT level used for the project being built.
+        boolean externalModel = isExternalModelBuildingRequest(request);
+
         for (ModelData currentData = resultData; currentData != null; ) {
             lineage.add(currentData);
 
@@ -309,8 +314,12 @@ public class DefaultModelBuilder implements ModelBuilder {
             List<Profile> interpolatedProfiles = getInterpolatedProfiles(rawModel, profileActivationContext, problems);
             tmpModel.setProfiles(interpolatedProfiles);
 
-            List<Profile> activePomProfiles =
-                    profileSelector.getActiveProfiles(tmpModel.getProfiles(), profileActivationContext, problems);
+            List<Profile> profilesToEvaluate =
+                    externalModel ? withoutFileActivation(tmpModel.getProfiles()) : tmpModel.getProfiles();
+            List<Profile> activePomProfiles = profileSelector.getActiveProfiles(
+                    profilesToEvaluate,
+                    externalModel ? externalActivationContext(profileActivationContext) : profileActivationContext,
+                    problems);
 
             List<Profile> rawProfiles = new ArrayList<>();
             for (Profile activePomProfile : activePomProfiles) {
@@ -488,10 +497,121 @@ public class DefaultModelBuilder implements ModelBuilder {
                 nt.performFor(pa.getName(), "name", pa::setName);
                 nt.performFor(pa.getValue(), "value", pa::setValue);
             });
-            a.map(Activation::getJdk).ifPresent(ja -> new Interpolation(activation, interpolator::interpolate)
-                    .performFor(ja, "jdk", activation::setJdk));
+            a.map(Activation::getJdk)
+                    .ifPresent(ja -> new Interpolation(activation, interpolator::interpolate)
+                            .performFor(ja, "jdk", activation::setJdk));
         }
         return interpolatedActivations;
+    }
+
+    /**
+     * Determines whether the given request builds a model for dependency resolution, i.e. a POM
+     * read from a remote repository (a dependency POM, one of its parents or an imported BOM)
+     * rather than a POM belonging to the project being built. Such requests are issued with
+     * {@link ModelBuildingRequest#VALIDATION_LEVEL_MINIMAL}, see for instance
+     * {@code DefaultArtifactDescriptorReader#loadPom}.
+     */
+    private static boolean isExternalModelBuildingRequest(ModelBuildingRequest request) {
+        return request.getValidationLevel() < ModelBuildingRequest.VALIDATION_LEVEL_MAVEN_2_0;
+    }
+
+    /**
+     * Returns a sandboxed {@link ProfileActivationContext} for evaluating profiles in
+     * repository-resolved (external) models — dependency POMs, parent POMs, and imported BOMs.
+     * <p>
+     * The sandboxed context preserves system properties (so JDK/OS activation works) and
+     * merges the POM's own {@code <properties>} into the system properties map so that
+     * property-activated profiles that depend on POM-declared values still work.
+     * User properties (consumer {@code -D} flags) are suppressed because they were not
+     * set for the dependency and must not accidentally activate its profiles.
+     * File-based profiles are pre-filtered via {@link #withoutFileActivation(List)} before
+     * reaching this context, so {@code getProjectDirectory()} is not relied on for file checks.
+     * <p>
+     * Model properties are merged into system properties (with system properties taking
+     * precedence) rather than changing the {@code PropertyProfileActivator} lookup chain,
+     * because changing the activator would affect ALL profile evaluations — including the
+     * build's own project — which can cause unintended profile activation when a POM declares
+     * a property that matches a profile's activation condition.
+     *
+     * @param delegate the original full context for this model build
+     * @return a sandboxed context suitable for external model profile activation
+     */
+    private static ProfileActivationContext externalActivationContext(ProfileActivationContext delegate) {
+        return new ProfileActivationContext() {
+            /**
+             * Cached merged map of project + system properties (computed once on first access).
+             * System properties win on conflict. {@code null} means not yet computed.
+             */
+            private Map<String, String> mergedSystemProperties;
+
+            @Override
+            public List<String> getActiveProfileIds() {
+                return delegate.getActiveProfileIds();
+            }
+
+            @Override
+            public List<String> getInactiveProfileIds() {
+                return delegate.getInactiveProfileIds();
+            }
+
+            /**
+             * System properties merged with project properties (system wins on conflict).
+             * This makes POM-declared properties visible to the PropertyProfileActivator
+             * without modifying the activator's lookup chain for non-external models.
+             * The merged map is computed once and cached to avoid repeated allocations.
+             */
+            @Override
+            public Map<String, String> getSystemProperties() {
+                if (mergedSystemProperties != null) {
+                    return mergedSystemProperties;
+                }
+                Map<String, String> projectProps = delegate.getProjectProperties();
+                if (projectProps == null || projectProps.isEmpty()) {
+                    mergedSystemProperties = Collections.unmodifiableMap(delegate.getSystemProperties());
+                } else {
+                    Map<String, String> merged = new HashMap<>(projectProps);
+                    merged.putAll(delegate.getSystemProperties()); // system wins
+                    mergedSystemProperties = Collections.unmodifiableMap(merged);
+                }
+                return mergedSystemProperties;
+            }
+
+            /** User properties are suppressed: consumer -D flags do not activate dependency profiles. */
+            @Override
+            public Map<String, String> getUserProperties() {
+                return Collections.emptyMap();
+            }
+
+            @Override
+            public Map<String, String> getProjectProperties() {
+                return delegate.getProjectProperties();
+            }
+
+            @Override
+            public File getProjectDirectory() {
+                return delegate.getProjectDirectory();
+            }
+        };
+    }
+
+    /**
+     * Returns the profiles from the given list whose activation does not depend on a file.
+     * File-activated profiles are suppressed in external model builds because publisher-local
+     * paths do not exist in the consumer's environment and resolving them against the consumer's
+     * filesystem would produce non-deterministic or incorrect results.
+     *
+     * @param profiles the full profile list
+     * @return profiles with file-activated ones removed
+     */
+    private static List<Profile> withoutFileActivation(List<Profile> profiles) {
+        List<Profile> eligible = new ArrayList<>(profiles.size());
+        for (Profile profile : profiles) {
+            Activation activation = profile.getActivation();
+            if (activation == null || activation.getFile() == null) {
+                eligible.add(profile);
+            }
+        }
+        return eligible;
     }
 
     @Override
@@ -795,9 +915,10 @@ public class DefaultModelBuilder implements ModelBuilder {
 
         // restore profiles with any activation to their value before full interpolation
         List<Profile> interpolatedProfiles = model.getProfiles();
-        IntStream.range(0, interpolatedProfiles.size()).forEach(i -> interpolatedProfiles
-                .get(i)
-                .setActivation(originalProfiles.get(i).getActivation()));
+        IntStream.range(0, interpolatedProfiles.size())
+                .forEach(i -> interpolatedProfiles
+                        .get(i)
+                        .setActivation(originalProfiles.get(i).getActivation()));
 
         return interpolatedModel;
     }
@@ -923,18 +1044,33 @@ public class DefaultModelBuilder implements ModelBuilder {
                 || !groupId.equals(parent.getGroupId())
                 || artifactId == null
                 || !artifactId.equals(parent.getArtifactId())) {
-            StringBuilder buffer = new StringBuilder(256);
-            buffer.append("'parent.relativePath'");
-            if (childModel != problems.getRootModel()) {
-                buffer.append(" of POM ").append(ModelProblemUtils.toSourceHint(childModel));
+            String actual = groupId + ':' + artifactId;
+            String declared = parent.getGroupId() + ':' + parent.getArtifactId();
+            String sourceHint =
+                    (childModel != problems.getRootModel()) ? ModelProblemUtils.toSourceHint(childModel) : null;
+
+            String message;
+            if (parent.getRelativePath() == null) {
+                // <relativePath> was omitted — Maven probed ../pom.xml on its own
+                message = "Maven probed the default location '../pom.xml'"
+                        + (sourceHint != null ? " for POM " + sourceHint : "")
+                        + " and found " + actual
+                        + " instead of the declared parent " + declared
+                        + ". Maven will fall back to repository resolution."
+                        + " To suppress this warning, add <relativePath/> to your <parent> declaration.";
+            } else {
+                // <relativePath> was set explicitly
+                message = "'parent.relativePath'"
+                        + (sourceHint != null ? " of POM " + sourceHint : "")
+                        + " points at '" + parent.getRelativePath() + "'"
+                        + " which resolves to " + actual
+                        + " instead of the declared parent " + declared
+                        + ". Please verify your project structure or correct the <relativePath> value.";
             }
-            buffer.append(" points at ").append(groupId).append(':').append(artifactId);
-            buffer.append(" instead of ").append(parent.getGroupId()).append(':');
-            buffer.append(parent.getArtifactId()).append(", please verify your project structure");
 
             problems.setSource(childModel);
             problems.add(new ModelProblemCollectorRequest(Severity.WARNING, Version.BASE)
-                    .setMessage(buffer.toString())
+                    .setMessage(message)
                     .setLocation(parent.getLocation("")));
             return null;
         }

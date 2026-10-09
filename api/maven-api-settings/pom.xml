@@ -31,6 +31,10 @@ under the License.
   <name>Maven 4 API :: Settings</name>
   <description>Maven 4 API - Immutable Settings model.</description>
 
+  <properties>
+    <javaModuleName>org.apache.maven.api.settings</javaModuleName>
+  </properties>
+
   <dependencies>
     <dependency>
       <groupId>org.apache.maven</groupId>
@@ -54,6 +58,9 @@ under the License.
         <groupId>org.codehaus.modello</groupId>
         <artifactId>modello-maven-plugin</artifactId>
         <configuration>
+          <pluralExceptions>
+            <aliases>alias</aliases>
+          </pluralExceptions>
           <version>2.0.0</version>
           <velocityBasedir>${project.basedir}/../../src/mdo</velocityBasedir>
           <models>
@@ -73,6 +80,12 @@ under the License.
             <id>modello</id>
             <goals>
               <goal>velocity</goal>
+            </goals>
+            <phase>generate-sources</phase>
+          </execution>
+          <execution>
+            <id>modello-docs</id>
+            <goals>
               <goal>xdoc</goal>
               <goal>xsd</goal>
             </goals>

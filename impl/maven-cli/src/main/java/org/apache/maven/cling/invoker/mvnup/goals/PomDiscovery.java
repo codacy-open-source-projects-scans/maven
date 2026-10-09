@@ -21,7 +21,7 @@ package org.apache.maven.cling.invoker.mvnup.goals;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -56,7 +56,7 @@ public class PomDiscovery {
      * @throws DomTripException if there's an error parsing XML
      */
     public static Map<Path, Document> discoverPoms(Path startDirectory) throws IOException, DomTripException {
-        Map<Path, Document> pomMap = new HashMap<>();
+        Map<Path, Document> pomMap = new LinkedHashMap<>();
 
         // Find and load the root POM
         Path rootPomPath = startDirectory.resolve(POM_XML);
@@ -104,13 +104,13 @@ public class PomDiscovery {
         }
 
         // Find modules element
-        Element modulesElement = rootElement.child(MODULES).orElse(null);
+        Element modulesElement = rootElement.childElement(MODULES).orElse(null);
         if (modulesElement == null) {
             return;
         }
 
         // Process each module
-        List<Element> moduleElements = modulesElement.children(MODULE).toList();
+        List<Element> moduleElements = modulesElement.childElements(MODULE).toList();
         for (Element moduleElement : moduleElements) {
             String moduleName = moduleElement.textContentTrimmed();
             if (moduleName.isEmpty()) {

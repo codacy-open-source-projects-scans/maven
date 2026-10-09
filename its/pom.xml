@@ -23,7 +23,7 @@ under the License.
   <parent>
     <groupId>org.apache</groupId>
     <artifactId>apache</artifactId>
-    <version>37</version>
+    <version>40</version>
     <relativePath />
   </parent>
 
@@ -75,7 +75,7 @@ under the License.
     <!--    <maven.compiler.source>8</maven.compiler.source>-->
     <!--    <maven.compiler.target>8</maven.compiler.target>-->
 
-    <maven-plugin-tools-version>3.15.2</maven-plugin-tools-version>
+    <maven-plugin-tools-version>3.16.0</maven-plugin-tools-version>
     <!-- Maven version being tested - must match the parent project version -->
     <maven-version>4.1.0-SNAPSHOT</maven-version>
     <!-- Support artifacts version - kept separate from Maven version -->
@@ -84,9 +84,9 @@ under the License.
     <maven.compiler.release>17</maven.compiler.release>
 
     <wagonVersion>3.5.3</wagonVersion>
-    <asmVersion>9.9.1</asmVersion>
-    <plexusUtilsVersion>4.0.3</plexusUtilsVersion>
-    <plexusXmlVersion>4.1.1</plexusXmlVersion>
+    <asmVersion>9.10.1</asmVersion>
+    <plexusUtilsVersion>4.1.0</plexusUtilsVersion>
+    <plexusXmlVersion>4.2.0</plexusXmlVersion>
 
     <!-- Set as system property in surefire/failsafe to propagate to tests and IT Verifier -->
     <toolboxVersion>0.14.1</toolboxVersion>
@@ -98,7 +98,7 @@ under the License.
       <dependency>
         <groupId>org.junit</groupId>
         <artifactId>junit-bom</artifactId>
-        <version>6.0.3</version>
+        <version>6.1.3</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -263,16 +263,17 @@ under the License.
         <artifactId>maven-compat</artifactId>
         <version>${maven-version}</version>
       </dependency>
+
       <dependency>
-        <groupId>org.apache.maven</groupId>
+        <groupId>org.apache.maven.executor</groupId>
         <artifactId>maven-executor</artifactId>
-        <version>${maven-version}</version>
+        <version>1.0.0</version>
       </dependency>
 
       <dependency>
         <groupId>org.slf4j</groupId>
         <artifactId>slf4j-api</artifactId>
-        <version>2.0.17</version>
+        <version>2.0.20</version>
       </dependency>
       <dependency>
         <groupId>org.codehaus.plexus</groupId>
@@ -285,11 +286,6 @@ under the License.
         <version>1</version>
       </dependency>
 
-      <dependency>
-        <groupId>org.apache.maven.shared</groupId>
-        <artifactId>maven-verifier</artifactId>
-        <version>2.0.0-M1</version>
-      </dependency>
       <dependency>
         <groupId>org.apache.maven.plugin-tools</groupId>
         <artifactId>maven-plugin-tools-java</artifactId>
@@ -324,7 +320,7 @@ under the License.
         <plugin>
           <groupId>org.eclipse.sisu</groupId>
           <artifactId>sisu-maven-plugin</artifactId>
-          <version>1.0.0</version>
+          <version>1.0.1</version>
         </plugin>
 
         <plugin>
@@ -334,7 +330,7 @@ under the License.
             <dependency>
               <groupId>org.codehaus.mojo</groupId>
               <artifactId>extra-enforcer-rules</artifactId>
-              <version>1.12.0</version>
+              <version>1.12.1</version>
             </dependency>
           </dependencies>
         </plugin>

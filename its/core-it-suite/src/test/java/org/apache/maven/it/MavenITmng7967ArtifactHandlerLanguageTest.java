@@ -18,7 +18,7 @@
  */
 package org.apache.maven.it;
 
-import java.io.File;
+import java.nio.file.Path;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -36,11 +36,12 @@ class MavenITmng7967ArtifactHandlerLanguageTest extends AbstractMavenIntegration
 
     @Test
     void javadocIsExecutedAndFailed() throws Exception {
-        File testDir = extractResources("/mng-7967-artifact-handler-language");
+        Path testDir = extractResources("mng-7967-artifact-handler-language");
 
-        Verifier verifier = newVerifier(testDir.getAbsolutePath());
+        Verifier verifier = newVerifier(testDir);
         verifier.deleteDirectory("target");
         verifier.addCliArgument("org.apache.maven.plugins:maven-javadoc-plugin:3.6.3:jar");
+        verifier.addCliArgument("-Ddoclint=all");
 
         boolean invocationFailed = false;
         // whatever outcome we do not fail here, but later
@@ -56,7 +57,7 @@ class MavenITmng7967ArtifactHandlerLanguageTest extends AbstractMavenIntegration
         verifyTextNotInLog(logs, "[INFO] Not executing Javadoc as the project is not a Java classpath-capable package");
 
         // javadoc invocation should actually fail the build
-        verifyTextInLog(logs, "[INFO] BUILD FAILURE");
+        verifyTextInLog(logs, "[ERROR] BUILD FAILURE");
 
         // javadoc invocation should actually fail the build
         verifyTextInLog(logs, "[ERROR] Failed to execute goal org.apache.maven.plugins:maven-javadoc-plugin");

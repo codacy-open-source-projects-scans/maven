@@ -69,20 +69,20 @@ under the License.
         <field>
           <name>goalPrefix</name>
           <version>1.0.0+</version>
-          <description></description>
+          <description>The prefix for the plugin's goal names as used on the command line (e.g. {@code compiler} for {@code compiler:compile}).</description>
           <type>String</type>
         </field>
         <field>
           <name>isolatedRealm</name>
           <version>1.0.0+</version>
-          <description></description>
+          <description>If set to {@code true}, the plugin will be loaded in isolation; it will not share the class loader with other plugins. Defaults to {@code false}.</description>
           <type>boolean</type>
           <defaultValue>false</defaultValue>
         </field>
         <field>
           <name>inheritedByDefault</name>
           <version>1.0.0+</version>
-          <description></description>
+          <description>If set to {@code true}, Mojos in this plugin are inherited by child projects by default. Defaults to {@code true}.</description>
           <type>boolean</type>
           <defaultValue>true</defaultValue>
         </field>
@@ -206,7 +206,7 @@ under the License.
           <name>executeLifecycle</name>
           <version>1.0.0+</version>
           <type>String</type>
-          <description></description>
+          <description>Specifies the name of a custom lifecycle to execute when this Mojo is forking execution (used together with {@code executePhase}).</description>
         </field>
         <field>
           <name>requiresDependencyResolution</name>
@@ -384,12 +384,12 @@ under the License.
           <name>composer</name>
           <version>1.0.0/1.1.0</version>
           <type>String</type>
-          <description></description>
+          <description>The composer type for this Mojo, used to compose the Mojo instance. Normally deduced from the implementation language.</description>
         </field>
         <field xdoc.separator="blank">
           <name>parameters</name>
           <version>1.0.0+</version>
-          <description></description>
+          <description>The list of parameters that can be used to configure this Mojo.</description>
           <association>
             <type>Parameter</type>
             <multiplicity>*</multiplicity>
@@ -398,7 +398,7 @@ under the License.
         <field xdoc.separator="blank">
           <name>resolutions</name>
           <version>2.0.0+</version>
-          <description></description>
+          <description>Dependency collection or resolution injections declared by {@code @Resolution} annotations on the Mojo class. Each entry specifies a field to inject with the resolved or collected dependency tree for a given path scope.</description>
           <association>
             <type>Resolution</type>
             <multiplicity>*</multiplicity>
@@ -407,7 +407,10 @@ under the License.
         <field xdoc.separator="blank">
           <name>requirements</name>
           <version>1.0.0/1.1.0</version>
-          <description>Use Maven 4 Dependency Injection (for v4 plugins) or JSR 330 annotations (for v3 plugins) to inject dependencies instead.</description>
+          <description><![CDATA[
+            Deprecated: Component requirements (plugin tools {@code @Component} annotation), that will be injected to Mojo fields.
+            <a href="https://maven.apache.org/maven-jsr330.html">Use JSR 330 annotations</a> to inject components instead, without this descriptor.
+          ]]></description>
           <association>
             <type>Requirement</type>
             <multiplicity>*</multiplicity>
@@ -424,6 +427,21 @@ under the License.
           <version>2.0.0+</version>
           <type>String</type>
           <description>the full goal name</description>
+        </field>
+        <field xdoc.separator="blank">
+          <name>afterLinks</name>
+          <version>2.0.0+</version>
+          <description>
+            Lifecycle ordering constraints declared by {@code @After} annotations on the Mojo class.
+            Each entry specifies that this Mojo's bound phase should execute after a given target phase,
+            with a pointer type ({@code PROJECT}, {@code DEPENDENCIES}, or {@code CHILDREN}) that controls
+            how the ordering applies across project boundaries.
+            @since 4.0.0
+          </description>
+          <association>
+            <type>AfterLink</type>
+            <multiplicity>*</multiplicity>
+          </association>
         </field>
       </fields>
     </class>
@@ -527,25 +545,28 @@ under the License.
     <class xdoc.anchorName="requirement">
       <name>Requirement</name>
       <version>1.0.0/1.1.0</version>
-      <description>Describes a component requirement.</description>
+      <description><![CDATA[
+        Deprecated: Describes a component requirement (plugin tools' {@code @Component} annotation), that will be injected to a Mojo field.
+        <a href="https://maven.apache.org/maven-jsr330.html">Use JSR 330 annotations</a> to inject components instead, without this descriptor.
+      ]]></description>
       <!-- see o.a.m.plugin.descriptor.Requirement -->
       <fields>
         <field>
           <name>role</name>
           <required>true</required>
           <type>String</type>
-          <description></description>
+          <description>Plexus role of the component to inject.</description>
         </field>
         <field xml.tagName="role-hint">
           <name>roleHint</name>
           <type>String</type>
-          <description></description>
+          <description>The Plexus role hint to disambiguate multiple implementations of the same role (used to identify specific component instances).</description>
         </field>
         <field xml.tagName="field-name">
           <name>fieldName</name>
           <required>true</required>
           <type>String</type>
-          <description>The field name which has this requirement.</description>
+          <description>The field name which has this component requirement.</description>
         </field>
       </fields>
     </class>
@@ -581,6 +602,46 @@ under the License.
           <type>String</type>
           <defaultValue>jar</defaultValue>
           <description>The type of dependency.</description>
+        </field>
+      </fields>
+    </class>
+
+    <class xdoc.anchorName="afterLink">
+      <name>AfterLink</name>
+      <version>2.0.0+</version>
+      <description>
+        A lifecycle ordering constraint from an {@code @After} annotation on a Mojo class.
+        Specifies that the Mojo's bound phase should execute after a given target phase,
+        with a pointer type controlling how the ordering applies across project boundaries.
+        @since 4.0.0
+      </description>
+      <fields>
+        <field>
+          <name>phase</name>
+          <required>true</required>
+          <version>2.0.0+</version>
+          <type>String</type>
+          <description>The target phase name that this Mojo should run after.</description>
+        </field>
+        <field>
+          <name>type</name>
+          <required>true</required>
+          <version>2.0.0+</version>
+          <type>String</type>
+          <description>
+            The type of pointer: {@code PROJECT} (same-project phase ordering),
+            {@code DEPENDENCIES} (cross-project dependency ordering),
+            or {@code CHILDREN} (parent-child module ordering).
+          </description>
+        </field>
+        <field>
+          <name>scope</name>
+          <version>2.0.0+</version>
+          <type>String</type>
+          <description>
+            The dependency scope, only meaningful when type is {@code DEPENDENCIES}.
+            Examples: {@code compile}, {@code runtime}, {@code test}.
+          </description>
         </field>
       </fields>
     </class>

@@ -93,12 +93,12 @@ public class MavenSession implements Cloneable {
 
     public void setProjects(List<MavenProject> projects) {
         if (!projects.isEmpty()) {
-            MavenProject first = projects.get(0);
-            this.currentProject = ThreadLocal.withInitial(() -> first);
-            this.topLevelProject = projects.stream()
+            MavenProject topLevelProject = projects.stream()
                     .filter(project -> project.isExecutionRoot())
                     .findFirst()
-                    .orElse(first);
+                    .orElse(projects.get(0));
+            this.currentProject = ThreadLocal.withInitial(() -> topLevelProject);
+            this.topLevelProject = topLevelProject;
         } else {
             this.currentProject = new ThreadLocal<>();
             this.topLevelProject = null;
@@ -472,23 +472,35 @@ public class MavenSession implements Cloneable {
         return container;
     }
 
+    private void checkContainer() {
+        if (container == null) {
+            throw new UnsupportedOperationException("PlexusContainer is not available in this session. "
+                    + "Plugins should use JSR 330 (@Inject) injection instead of "
+                    + "MavenSession.lookup(). The MavenSession Plexus lookup methods are deprecated.");
+        }
+    }
+
     @Deprecated
     public Object lookup(String role) throws ComponentLookupException {
+        checkContainer();
         return container.lookup(role);
     }
 
     @Deprecated
     public Object lookup(String role, String roleHint) throws ComponentLookupException {
+        checkContainer();
         return container.lookup(role, roleHint);
     }
 
     @Deprecated
     public List<Object> lookupList(String role) throws ComponentLookupException {
+        checkContainer();
         return container.lookupList(role);
     }
 
     @Deprecated
     public Map<String, Object> lookupMap(String role) throws ComponentLookupException {
+        checkContainer();
         return container.lookupMap(role);
     }
 
